@@ -107,7 +107,7 @@ class VerticalXGBoostClassifier:
 
         self.maxSplitNum = comm.bcast(maxlen, root=1)
         self.quantile = dict
-        print(self.rank, 'MaxSplitNum ', self.maxSplitNum, self.quantile)
+        #print(self.rank, 'MaxSplitNum ', self.maxSplitNum, self.quantile)
 
     def fit(self, X, y):
         data_num = X.shape[0]
@@ -117,7 +117,8 @@ class VerticalXGBoostClassifier:
         self.getAllQuantile()
         for i in range(self.n_estimators):
             if self.rank == 1:
-                print('In classifier fit, rank: ', self.rank, self.data, self.maxSplitNum, self.quantile)
+                #print('In classifier fit, rank: ', self.rank, self.data, self.maxSplitNum, self.quantile)
+                pass
             tree = self.trees[i]
             tree.data, tree.maxSplitNum, tree.quantile = self.data, self.maxSplitNum, self.quantile
             y_and_pred = np.concatenate((y, y_pred), axis=1)

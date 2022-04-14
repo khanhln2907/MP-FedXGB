@@ -1,2 +1,5 @@
-2022-04-14 15:39:05,371 - WARNING - Hello World
-2022-04-14 15:39:05,391 - WARNING - Rank 0 appended data
+2022-04-14 16:54:09,190 - WARNING - Hello World
+2022-04-14 16:54:09,200 - WARNING - Rank 0 appended data
+2022-04-14 16:54:09,200 - INFO - Iter: 0. Amount of splitting candidates: 14
+2022-04-14 16:54:09,440 - INFO - Iter: 1. Amount of splitting candidates: 14
+2022-04-14 16:54:09,673 - INFO - Iter: 2. Amount of splitting candidates: 14

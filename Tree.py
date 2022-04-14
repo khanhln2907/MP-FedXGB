@@ -412,7 +412,8 @@ class VerticalXGBoostTree:
         j_best, k_best = self.split.SARGMAX_ver2(gain_left_up, gain_left_down, gain_right_up, gain_right_down,
                                                  self.rank)
         if self.rank == 1:
-            print(datetime.now() - start)
+            #print(datetime.now() - start)
+            pass
         gain_sign = self.split.SSIGN_ver2(gain_left_up[j_best, k_best], gain_left_down[j_best, k_best],
                                           gain_right_up[j_best, k_best], gain_right_down[j_best, k_best],
                                           cgain_up, cgain_down, self._gamma, self.rank)
