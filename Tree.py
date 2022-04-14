@@ -499,12 +499,14 @@ class VerticalXGBoostTree:
             return idx, result
 
     def fit(self, y_and_pred, tree_num):
+        #print('In tree fit, rank: ', self.rank)
         size = None
         size_list = comm.gather(self.data.shape[1], root=2)  # Gather all the feature size.
         if self.rank == 2:
             size = sum(size_list[1:])
         self.featureNum = comm.bcast(size, root=2)  # Broadcast how many feature there are in total.
         if self.rank == 2:
+            #print('DCM, rank: ', self.rank)
             random_list = np.random.permutation(self.featureNum)
             start = 0
             for i in range(1, clientNum + 1):
@@ -514,7 +516,7 @@ class VerticalXGBoostTree:
                 else:
                     comm.send(rand, dest=i)  # Send random_list to all the client, mask their feature index.
                 start += size_list[i]
-        elif self.rank != 0:
+        elif self.rank != 0:    
             self.featureList = comm.recv(source=2)
         self.setMapping()
         shared_G, shared_H, shared_S = None, None, None

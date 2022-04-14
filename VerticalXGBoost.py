@@ -3,7 +3,7 @@ import pandas as pd
 from mpi4py import MPI
 from datetime import *
 from SSCalculation import *
-from Tree import *
+from Tree import VerticalXGBoostTree
 import math
 import time
 np.random.seed(10)
@@ -106,8 +106,8 @@ class VerticalXGBoostClassifier:
             maxlen = max(recv_maxlen)
 
         self.maxSplitNum = comm.bcast(maxlen, root=1)
-        # print('MaxSplitNum: ', self.maxSplitNum)
         self.quantile = dict
+        print(self.rank, 'MaxSplitNum ', self.maxSplitNum, self.quantile)
 
     def fit(self, X, y):
         data_num = X.shape[0]
@@ -116,7 +116,8 @@ class VerticalXGBoostClassifier:
         self.data = X.copy()
         self.getAllQuantile()
         for i in range(self.n_estimators):
-            # print('In classifier fit, rank: ', self.rank)
+            if self.rank == 1:
+                print('In classifier fit, rank: ', self.rank, self.data, self.maxSplitNum, self.quantile)
             tree = self.trees[i]
             tree.data, tree.maxSplitNum, tree.quantile = self.data, self.maxSplitNum, self.quantile
             y_and_pred = np.concatenate((y, y_pred), axis=1)
@@ -146,7 +147,7 @@ class VerticalXGBoostClassifier:
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
-
+print("My Rank ", rank)
 def main1():
     data = pd.read_csv('./iris.csv').values
 
@@ -399,5 +400,6 @@ def main3():
 
 
 if __name__ == '__main__':
-    main2()
+    #main2()
+    pass
 
