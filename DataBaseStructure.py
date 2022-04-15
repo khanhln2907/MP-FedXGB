@@ -91,8 +91,8 @@ class DataBase:
     def __init__(self) -> None:
         self.data = []
 
-    def appendFeature(featureData: FeatureData):
-        pass
+    def appendFeature(self, featureData: FeatureData):
+        self.data.append(featureData)
 
 
 def testQuantile():
@@ -100,5 +100,10 @@ def testQuantile():
     handle = QuantiledFeature("RandomData", vec)
     print("Amount of Splitting Cadndidates: {}" .format(len(handle.splittingCandidates)))
 
-np.random.seed(66)
-testQuantile()
+# np.random.seed(66)
+# testQuantile()
+
+# data = [[0,1,2,3], [1,2,3,4]]
+# data = np.reshape(data, (4, 2))
+# print(len(data), len(data[0]))
+# print(data[:,0])

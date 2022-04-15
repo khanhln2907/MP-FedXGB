@@ -97,14 +97,35 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
 
         self.data = []
         self.label = []
+        self.dataBase = DataBase()
 
-    def appendData(self, X, y):
-        data_num = X.shape[0]
+    def appendData(self, dataTable, featureName = None):
+        """
+        Dimension definition: 
+        -   dataTable   nxm: <n> users & <m> features
+        -   name        mx1: <m> strings
+        """
+        # This is just for now to let the code run
+        tmp = dataTable.copy()
+        self.data = tmp[:,:-1]
+        data_num = self.data.shape[0]
+        y = dataTable[:, -1]
         self.label = np.reshape(y, (data_num, 1))
-        self.data = X.copy()
-
         self.getAllQuantile()
-        logger.warning('Rank %d appended data', self.rank)
+        
+        # Implementing the database
+        nFeatures = len(dataTable[0])
+        if(featureName is None):
+            featureName = [str(i) for i in range(nFeatures)]
+        
+        assert (len(featureName) is nFeatures) # The total amount of columns must match the assigned name 
+        
+        for i in range(len(featureName)):
+            self.dataBase.appendFeature(FeatureData(featureName[i], dataTable[:,i]))
+
+
+        logger.warning('Appended data')
+
 
     def getSplittingMatrix(self):
         #self.getAllQuantile()
@@ -163,16 +184,20 @@ def test():
     splitclass = SSCalculate()
     model = FedXGBoostClassifier(rank=rank, lossfunc='LogLoss', splitclass=splitclass)
 
+    # np.concatenate((X_train_A, y_train))
     if rank == 1:
-        model.appendData(X_train_A, y_train)
+        print("Test A", len(X_train_A), len(X_train_A[0]), len(y_train), len(y_train[0]))
+        print("Test A", X_train_A.shape[0], len(X_train_A[0]), len(y_train), len(y_train[0]))
+        model.appendData(np.concatenate((X_train_A, y_train), 1))
     elif rank == 2:
-        model.appendData(X_train_B, y_train)
+        print("Test", len(X_train_B), len(X_train_B[0]), len(y_train), len(y_train[0]))
+        model.appendData(np.concatenate((X_train_B, y_train), 1))
     elif rank == 3:
-        model.appendData(X_train_C, y_train)
+        model.appendData(np.concatenate((X_train_C, y_train), 1))
     elif rank == 4:
-        model.appendData(X_train_D, y_train)
+        model.appendData(np.concatenate((X_train_D, y_train), 1))
     else:
-        model.appendData(X_train_A, y_train)
+        model.appendData(np.concatenate((X_train_A, y_train), 1))
 
     model.boost()
 
@@ -270,15 +295,15 @@ def main4():
 
     start = datetime.now()
     if rank == 1:
-        model.appendData(X_train_A, y_train)
+        model.appendData(np.concatenate(X_train_A, y_train))
     elif rank == 2:
-        model.appendData(X_train_B, y_train)
+        model.appendData(np.concatenate(X_train_B, y_train))
     elif rank == 3:
-        model.appendData(X_train_C, y_train)
+        model.appendData(np.concatenate(X_train_C, y_train))
     elif rank == 4:
-        model.appendData(X_train_D, y_train)
+        model.appendData(np.concatenate(X_train_D, y_train))
     else:
-        model.appendData(X_train_A, y_train)
+        model.appendData(np.concatenate(X_train_A, y_train))
 
     model.boost()
 
