@@ -50,28 +50,6 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
     def fit(self, y_and_pred, tree_num, xData, sQuantile):
         super().fit(y_and_pred, tree_num)
 
-        # size = None
-        # size_list = comm.gather(self.data.shape[1], root=2)  # Gather all the feature size.
-        # if self.rank == 2:
-        #     size = sum(size_list[1:])
-        # self.featureNum = comm.bcast(size, root=2)  # Broadcast how many feature there are in total.
-        # if self.rank == 2:
-        #     #print('DCM, rank: ', self.rank)
-        #     random_list = np.random.permutation(self.featureNum)
-        #     start = 0
-        #     for i in range(1, clientNum + 1):
-        #         rand = random_list[start:start + size_list[i]]
-        #         if i == 2:
-        #             self.featureList = rand
-        #         else:
-        #             comm.send(rand, dest=i)  # Send random_list to all the client, mask their feature index.
-        #         start += size_list[i]
-        # elif self.rank != 0:    
-        #     self.featureList = comm.recv(source=2)
-        # self.setMapping()
-        # shared_G, shared_H, shared_S = None, None, None
-
-
         # Compute the gradients
         if self.rank == PARTY_ID.ACTIVE_PARTY: # Calculate gradients on the node who have labels.
             y, y_pred = self._split(y_and_pred)
@@ -86,9 +64,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             for partners in range(2, nprocs):   
                 logger.info("Sending G, H to party %d", partners)         
                 data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
-            
-            
-
+        
         elif rank != 0: # TODO: change this hard coded number
         #else:
             data = comm.recv(source=1, tag=MSG_ID.MASKED_GH)
