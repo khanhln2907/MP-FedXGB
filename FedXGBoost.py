@@ -1,8 +1,10 @@
+from posixpath import split
 from numpy import concatenate
 from VerticalXGBoost import *
 from SSCalculation import *
 import matplotlib.pyplot as plt
 import logging
+from DataBaseStructure import *
 
 class PARTY_ID:
     ACTIVE_PARTY = 1
@@ -10,7 +12,6 @@ class PARTY_ID:
 
 class MSG_ID:
     MASKED_GH = 99
-
 
 class FedXGBoostSecureHandler:
     QR = []
