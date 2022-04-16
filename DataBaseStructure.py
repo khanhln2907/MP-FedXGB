@@ -17,7 +17,6 @@ class QuantiledFeature(FeatureData):
         super().__init__(name, dataVector)
         self.splittingMatrix, self.splittingCandidates = QuantiledFeature.quantile(self.data, QuantileParam)     
 
-
     def quantile(fData: FeatureData, param: QuantileParam):
         splittingMatrix = []
         splittingCandidates = []
@@ -72,7 +71,8 @@ class QuantiledFeature(FeatureData):
         return splittingMatrix, splittingCandidates
 
 
-        return splittingMatrix
+    def get_splitting_info(self):
+        return self.splittingMatrix, self.splittingCandidates
 
     def generate_splitting_matrix(dataVector, splittingCandidates):
         """
@@ -99,14 +99,40 @@ class DataBase:
         fNameList = ''
         for fName, fData in self.featureDict.items():
             fNameList += fName + '; '
-        print("Existing Feature: ", fNameList)
-        print(self.getDataMatrix())
+        #print("Existing Feature: ", fNameList)
+        #print(self.getDataMatrix())
 
     def getDataMatrix(self, nameFeature = None):
         X = pd.DataFrame(self.featureDict).values
         return X
 
+class QuantiledDataBase(DataBase):
+    def __init__(self, dataBase:DataBase = None) -> None:
+        super().__init__()
 
+        # Perform the quantiled for all the feature (copy, don't change the orgiginal data)
+        if dataBase is not None:
+            for feature, value in dataBase.featureDict.items():
+                self.featureDict[feature] = QuantiledFeature(feature, value)
+
+
+    def printInfo(self, logger):
+        logger.info("Total feature amount: %d",  len(self.featureDict.items()))
+        for key, feature in self.featureDict.items():
+            sm, sc = self.featureDict[key].get_splitting_info()
+            logger.info("{} splitting candidates of feature {}".format(str(len(sc)), key) + " [{}]".format(' '.join(map(str, sc))))
+
+    def get_merged_splitting_matrix(self):
+        retMergedSM = None
+        for key, feature in self.featureDict.items():
+            sm, sc = self.featureDict[key].get_splitting_info()
+            #print("Shape Feature ", key," SM ", sm.shape, type(sm))
+
+            if retMergedSM is None:
+                retMergedSM = sm
+            else:
+                retMergedSM = np.concatenate((retMergedSM,sm))  
+        return retMergedSM
 
 def testQuantile():
     vec = rand(100)

@@ -47,7 +47,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         self.Tree = []
 
-    def fit(self, y_and_pred, tree_num, xData, sQuantile):
+    def fitDepr(self, y_and_pred, tree_num, xData, sQuantile):
         super().fit(y_and_pred, tree_num)
 
         # Compute the gradients
@@ -77,7 +77,34 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 #print(xData)
                 pass
 
+    def fit(self, y_and_pred, treeID, qDataBase: QuantiledDataBase):
+        super().fit(y_and_pred, treeID)
 
+        # Compute the gradients
+        if self.rank == PARTY_ID.ACTIVE_PARTY: # Calculate gradients on the node who have labels.
+            y, y_pred = self._split(y_and_pred)
+            G = self.loss.gradient(y, y_pred)
+            H = self.loss.hess(y, y_pred)
+            logger.info("Computed Gradients and Hessians ")
+            logger.debug("G {}".format(' '.join(map(str, G))))
+            logger.debug("H {}".format(' '.join(map(str, H))))
+
+            gh = np.concatenate((G, H), axis=1)
+            nprocs = comm.Get_size()
+            for partners in range(2, nprocs):   
+                logger.info("Sending G, H to party %d", partners)         
+                data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
+        
+        elif rank != 0: # TODO: change this hard coded number
+            data = comm.recv(source=1, tag=MSG_ID.MASKED_GH)
+            logger.info("Received G, H")         
+            
+            # Perform the secure Sharing of the splitting matrix
+            qDataBase.printInfo(logger)
+            securedSM = qDataBase.get_merged_splitting_matrix()
+            logger.debug("Secured splitting matrix with shape of {}".format(str(securedSM.shape)) \
+                            + "\n {}".format(' '.join(map(str, securedSM))))
+            #print("Shape ", securedSM.shape)
 
 class FedXGBoostClassifier(VerticalXGBoostClassifier):
     def __init__(self, rank, lossfunc, splitclass, _lambda=1, _gamma=0.5, _epsilon=0.1, n_estimators=3, max_depth=3):
@@ -168,22 +195,27 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
         
         
         for i in range(self.n_estimators):
-            logger.info("Iter: %d. Amount of splitting candidates: %d", i, self.maxSplitNum)
-            for key, value in self.quantile.items():
-                logger.info("Quantile %d: ", key)
-                logger.info("{}".format(' '.join(map(str, value))))
             
-            tree = self.trees[i]
-            tree.data, tree.maxSplitNum, tree.quantile = self.data, self.maxSplitNum, self.quantile
-            #print((np.array(self.quantile)))
+            
+            self.trees[i].data, self.trees[i].maxSplitNum, self.trees[i].quantile = self.data, self.maxSplitNum, self.quantile
             y_and_pred = np.concatenate((y, y_pred), axis=1)
 
             # Perform tree boosting
-            tree.fit(y_and_pred, i, self.data, self.quantile)
+            #self.trees[i].fit(y_and_pred, i, self.data, self.quantile)
+            # for key, feature in self.dataBase.featureDict.items():
+            #     print(key, feature)
+            #     #self.featureDict[key] = QuantiledFeature(key, feature.dataVector)
+
+            dataFit = QuantiledDataBase(self.dataBase)
+
+            self.trees[i].fit(y_and_pred, i, dataFit)
+            
+
+
             if i == self.n_estimators - 1: # The last tree, no need for prediction update.
                 continue
             else:
-                update_pred = tree.predict(X)
+                update_pred = self.trees[i].predict(X)
             if self.rank == 1:
                 update_pred = np.reshape(update_pred, (data_num, 1))
                 y_pred += update_pred
@@ -232,28 +264,28 @@ def test():
     model.printInfo()
 
 
-    #model.boost()
+    model.boost()
     
-    # if rank == 1:
-    #     y_pred = model.predict(X_test_A)
-    # elif rank == 2:
-    #     y_pred = model.predict(X_test_B)
-    # elif rank == 3:
-    #     y_pred = model.predict(X_test_C)
-    # elif rank == 4:
-    #     y_pred = model.predict(X_test_D)
-    # else:
-    #     model.predict(np.zeros_like(X_test_A))
+    if rank == 1:
+        y_pred = model.predict(X_test_A)
+    elif rank == 2:
+        y_pred = model.predict(X_test_B)
+    elif rank == 3:
+        y_pred = model.predict(X_test_C)
+    elif rank == 4:
+        y_pred = model.predict(X_test_D)
+    else:
+        model.predict(np.zeros_like(X_test_A))
 
-    # if rank == 1:
-    #     y_pred = 1.0 / (1.0 + np.exp(-y_pred))
-    #     y_pred[y_pred > 0.5] = 1
-    #     y_pred[y_pred <= 0.5] = 0
-    #     result = y_pred - y_test
-    #     print(np.sum(result == 0) / y_pred.shape[0])
-    #     # for i in range(y_test.shape[0]):
-    #     #     print(y_test[i], y_pred[i], y_ori[i])
-    # pass
+    if rank == 1:
+        y_pred = 1.0 / (1.0 + np.exp(-y_pred))
+        y_pred[y_pred > 0.5] = 1
+        y_pred[y_pred <= 0.5] = 0
+        result = y_pred - y_test
+        print(np.sum(result == 0) / y_pred.shape[0])
+        # for i in range(y_test.shape[0]):
+        #     print(y_test[i], y_pred[i], y_ori[i])
+    pass
 
 
 
