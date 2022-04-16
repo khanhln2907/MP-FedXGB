@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy import rand
 
 
@@ -14,8 +15,7 @@ class QuantiledFeature(FeatureData):
   
     def __init__(self, name, dataVector) -> None:
         super().__init__(name, dataVector)
-        self.splittingMatrix, self.splittingCandidates = QuantiledFeature.quantile(self.data, QuantileParam)
-        
+        self.splittingMatrix, self.splittingCandidates = QuantiledFeature.quantile(self.data, QuantileParam)     
 
 
     def quantile(fData: FeatureData, param: QuantileParam):
@@ -89,10 +89,23 @@ class QuantiledFeature(FeatureData):
 
 class DataBase:
     def __init__(self) -> None:
-        self.data = []
+        self.featureDict = {}
 
     def appendFeature(self, featureData: FeatureData):
-        self.data.append(featureData)
+        #self.featureData.append(featureData)
+        self.featureDict[featureData.name] = featureData.data
+
+    def printInfo(self):
+        fNameList = ''
+        for fName, fData in self.featureDict.items():
+            fNameList += fName + '; '
+        print("Existing Feature: ", fNameList)
+        print(self.getDataMatrix())
+
+    def getDataMatrix(self, nameFeature = None):
+        X = pd.DataFrame(self.featureDict).values
+        return X
+
 
 
 def testQuantile():

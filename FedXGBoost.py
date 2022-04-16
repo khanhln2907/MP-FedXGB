@@ -105,7 +105,7 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
         -   dataTable   nxm: <n> users & <m> features
         -   name        mx1: <m> strings
         """
-        # This is just for now to let the code run
+        # TODO: This is just for now to let the code run
         tmp = dataTable.copy()
         self.data = tmp[:,:-1]
         data_num = self.data.shape[0]
@@ -116,27 +116,57 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
         # Implementing the database
         nFeatures = len(dataTable[0])
         if(featureName is None):
-            featureName = [str(i) for i in range(nFeatures)]
+            featureName = ["Rank_{}_Feature_".format(rank) + str(i) for i in range(nFeatures)]
         
         assert (len(featureName) is nFeatures) # The total amount of columns must match the assigned name 
         
         for i in range(len(featureName)):
             self.dataBase.appendFeature(FeatureData(featureName[i], dataTable[:,i]))
 
-
         logger.warning('Appended data')
 
 
-    def getSplittingMatrix(self):
-        #self.getAllQuantile()
-        #self.quantile
-        pass
+    def printInfo(self):
+        featureListStr = '' 
+        self.dataBase.printInfo()
 
-    def boost(self):
+    def boostDepr(self):
         data_num = self.data.shape[0]
         X = self.data
         y = self.label
         y_pred = np.zeros(np.shape(self.label))
+        for i in range(self.n_estimators):
+            logger.info("Iter: %d. Amount of splitting candidates: %d", i, self.maxSplitNum)
+            for key, value in self.quantile.items():
+                logger.info("Quantile %d: ", key)
+                logger.info("{}".format(' '.join(map(str, value))))
+            
+            tree = self.trees[i]
+            tree.data, tree.maxSplitNum, tree.quantile = self.data, self.maxSplitNum, self.quantile
+            #print((np.array(self.quantile)))
+            y_and_pred = np.concatenate((y, y_pred), axis=1)
+
+            # Perform tree boosting
+            tree.fit(y_and_pred, i, self.data, self.quantile)
+            if i == self.n_estimators - 1: # The last tree, no need for prediction update.
+                continue
+            else:
+                update_pred = tree.predict(X)
+            if self.rank == 1:
+                update_pred = np.reshape(update_pred, (data_num, 1))
+                y_pred += update_pred
+
+    def boost(self):
+        data_num = self.data.shape[0]
+        X = self.dataBase.getDataMatrix()
+        if(rank == 2):
+            print("data ", np.shape(self.data))
+            print("X ", np.shape(X))
+
+        y = self.label
+        y_pred = np.zeros(np.shape(self.label))
+        
+        
         for i in range(self.n_estimators):
             logger.info("Iter: %d. Amount of splitting candidates: %d", i, self.maxSplitNum)
             for key, value in self.quantile.items():
@@ -199,28 +229,31 @@ def test():
     else:
         model.appendData(np.concatenate((X_train_A, y_train), 1))
 
-    model.boost()
+    model.printInfo()
 
-    if rank == 1:
-        y_pred = model.predict(X_test_A)
-    elif rank == 2:
-        y_pred = model.predict(X_test_B)
-    elif rank == 3:
-        y_pred = model.predict(X_test_C)
-    elif rank == 4:
-        y_pred = model.predict(X_test_D)
-    else:
-        model.predict(np.zeros_like(X_test_A))
 
-    if rank == 1:
-        y_pred = 1.0 / (1.0 + np.exp(-y_pred))
-        y_pred[y_pred > 0.5] = 1
-        y_pred[y_pred <= 0.5] = 0
-        result = y_pred - y_test
-        print(np.sum(result == 0) / y_pred.shape[0])
-        # for i in range(y_test.shape[0]):
-        #     print(y_test[i], y_pred[i], y_ori[i])
-    pass
+    #model.boost()
+    
+    # if rank == 1:
+    #     y_pred = model.predict(X_test_A)
+    # elif rank == 2:
+    #     y_pred = model.predict(X_test_B)
+    # elif rank == 3:
+    #     y_pred = model.predict(X_test_C)
+    # elif rank == 4:
+    #     y_pred = model.predict(X_test_D)
+    # else:
+    #     model.predict(np.zeros_like(X_test_A))
+
+    # if rank == 1:
+    #     y_pred = 1.0 / (1.0 + np.exp(-y_pred))
+    #     y_pred[y_pred > 0.5] = 1
+    #     y_pred[y_pred <= 0.5] = 0
+    #     result = y_pred - y_test
+    #     print(np.sum(result == 0) / y_pred.shape[0])
+    #     # for i in range(y_test.shape[0]):
+    #     #     print(y_test[i], y_pred[i], y_ori[i])
+    # pass
 
 
 
