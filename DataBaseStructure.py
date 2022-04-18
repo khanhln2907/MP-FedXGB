@@ -16,7 +16,7 @@ class QuantiledFeature(FeatureData):
     def __init__(self, name, dataVector) -> None:
         super().__init__(name, dataVector)
         self.splittingMatrix, self.splittingCandidates = QuantiledFeature.quantile(self.data, QuantileParam)     
-
+        
     def quantile(fData: FeatureData, param: QuantileParam):
         splittingMatrix = []
         splittingCandidates = []
@@ -120,6 +120,9 @@ class QuantiledDataBase(DataBase):
             for feature, value in dataBase.featureDict.items():
                 self.featureDict[feature] = QuantiledFeature(feature, value)
 
+        self.gradVec = []
+        self.hessVec = []
+
     def printInfo(self, logger):
         logger.info("nUsers: %d nFeature: %d", self.nUsers, len(self.featureDict.items()))
         for key, feature in self.featureDict.items():
@@ -152,9 +155,19 @@ class QuantiledDataBase(DataBase):
             retL.appendFeature(FeatureData(feature, leftDictData))
             retR.appendFeature(FeatureData(feature, rightDictData))
 
+        retL = QuantiledDataBase(retL)
+        print(self.gradVec)
+        print(splittingVector == 0)
+        retL.appendGradientsHessian(self.gradVec[splittingVector == 0], self.hessVec[splittingVector == 0])
+
+        retH = QuantiledDataBase(retR)
+        retH.appendGradientsHessian(self.gradVec[splittingVector == 1], self.hessVec[splittingVector == 1])
+
         return QuantiledDataBase(retL), QuantiledDataBase(retR)
 
-
+    def appendGradientsHessian(self, g, h):
+        self.gradVec = g
+        self.hessVec = h
 
 def testQuantile():
     vec = rand(100)

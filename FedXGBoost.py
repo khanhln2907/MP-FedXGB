@@ -75,10 +75,9 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
     def __init__(self, rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum):
         super().__init__(rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum)
 
-        self.Tree = []
-
     def fitDepr(self, y_and_pred, tree_num, xData, sQuantile):
         super().fit(y_and_pred, tree_num)
+
 
         # Compute the gradients
         if self.rank == PARTY_ID.ACTIVE_PARTY: # Calculate gradients on the node who have labels.
@@ -110,16 +109,18 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
     def fit(self, y_and_pred, treeID, qDataBase: QuantiledDataBase):
         super().fit(y_and_pred, treeID)
 
-        # Compute the gradients
+        """
+        This function computes the gradient and the hessian vectors to perform the tree construction
+        """
+        # Compute the gradients and hessians
         if self.rank == PARTY_ID.ACTIVE_PARTY: # Calculate gradients on the node who have labels.
             y, y_pred = self._split(y_and_pred)
-            G = self.loss.gradient(y, y_pred)
-            H = self.loss.hess(y, y_pred)
+            G = np.array(self.loss.gradient(y, y_pred)).reshape(-1)
+            H = np.array(self.loss.hess(y, y_pred)).reshape(-1)
             logger.info("Computed Gradients and Hessians ")
             logger.debug("G {}".format(' '.join(map(str, G))))
             logger.debug("H {}".format(' '.join(map(str, H))))
 
-            gh = np.concatenate((G, H), axis=1)
             nprocs = comm.Get_size()
             for partners in range(2, nprocs):   
                 data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
@@ -127,37 +128,47 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
             # Receive the splitting matrix and find the optimal splitting score
             
-            sInfo = SplittingInfo()        
+            qDataBase.appendGradientsHessian(G, H) 
+
+        if(rank != 0):
+            maxDepth = 4
+            self.grow(qDataBase, depth = 0)
+            
+            
+
+    def grow(self, qDataBase: QuantiledDataBase, depth=1):
+        if self.rank == PARTY_ID.ACTIVE_PARTY:
+            sInfo = SplittingInfo()
+            nprocs = comm.Get_size()        
             for partners in range(2, nprocs):   
                 rxSM = comm.recv(source = partners, tag = MSG_ID.RAW_SPLITTING_MATRIX)
 
                 # Find the optimal splitting score
-                sumGRVec = np.matmul(rxSM, G).reshape(-1)
-                sumHRVec = np.matmul(rxSM, H).reshape(-1)
-                sumGLVec = sum(G) - sumGRVec
-                sumHLVec = sum(H) - sumHRVec
-                L = compute_splitting_score(rxSM, G, H, 0.01)
+                sumGRVec = np.matmul(rxSM, qDataBase.gradVec).reshape(-1)
+                sumHRVec = np.matmul(rxSM, qDataBase.hessVec).reshape(-1)
+                sumGLVec = sum(qDataBase.gradVec) - sumGRVec
+                sumHLVec = sum(qDataBase.hessVec) - sumHRVec
+                L = compute_splitting_score(rxSM, qDataBase.gradVec, qDataBase.hessVec, 0.01)
 
                 logger.info("Received SM from party {} and computed:  \n".format(partners) + \
                     "GR: " + str(sumGRVec.T) + "\n" + "HR: " + str(sumHRVec.T) +\
                     "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T) +\
                     "\nSplitting Score: {}".format(L.T))       
                 maxScore = max(L)
+                
                 if maxScore > sInfo.bestSplitScore:
                     sInfo.bestSplitScore = maxScore
                     sInfo.bestSplitParty = partners
                     bestCandidateIndex = np.argmax(L)
                     sInfo.bestSplittingVector = rxSM[bestCandidateIndex, :]
 
+            # Log the splitting info
             sInfo.log(logger)
             # Build Tree from the feature with the optimal index
-            
             for partners in range(2, nprocs):
-                data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
-                logger.info("Sent splitting info to clients {} \n".format(partners))
-
-            
-        elif rank != 0: # TODO: change this hard coded number
+                    data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
+                    logger.info("Sent splitting info to clients {} \n".format(partners))
+        elif (rank != 0):
             data = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag=MSG_ID.MASKED_GH)
             logger.info("Received G, H from the active party")         
             
@@ -174,35 +185,24 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             logger.info("Sent the splitting matrix to the active party")         
 
             sInfo = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
-            logger.info("Received the SplittingInfo from the active party")         
+            logger.info("Received the SplittingInfo from the active party")   
 
-
-        if(rank != 0):
-            # Get the optimal splitting candidates and partition them into two databases
-            logger.info("Partition the database for the next build")         
-            lD, rD = qDataBase.partion(sInfo.bestSplittingVector)
-            qDataBase.printInfo(logger)
-            lD.printInfo(logger)
-            rD.printInfo(logger)
+        # Get the optimal splitting candidates and partition them into two databases
+        logger.info("Partition the database for the next build")         
+        lD, rD = qDataBase.partion(sInfo.bestSplittingVector)
+        qDataBase.printInfo(logger)
+        lD.printInfo(logger)
+        rD.printInfo(logger)
+        
+        # depth += 1
+        # maxDepth = 4
+        # # Construct the new tree if the gain is positive
+        # if depth <= maxDepth & sInfo.bestSplitScore > 0:
+        #     self.fit(lD)
+        # else:
             
-
+        #     pass
             
-
-    def grow(self, dataBase, depth=1, maxDepth = 5):
-        leftBranch = self.buildTree_ver4(shared_gl, shared_hl, shared_sl, depth + 1)
-        rightBranch = self.buildTree_ver4(shared_gr, shared_hr, shared_sr, depth + 1)
-
-        leftBranch = TreeNode()
-        rightBranch = TreeNode() 
-
-        if depth <= maxDepth:
-            return TreeNodes
-        else:
-            return 
-        return 
-
-
-    #def build()
 
 
 class FedXGBoostClassifier(VerticalXGBoostClassifier):
