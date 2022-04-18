@@ -6,6 +6,8 @@ from SSCalculation import *
 import matplotlib.pyplot as plt
 import logging
 from DataBaseStructure import *
+from TreeStructure import *
+
 
 class PARTY_ID:
     ACTIVE_PARTY = 1
@@ -14,6 +16,7 @@ class PARTY_ID:
 class MSG_ID:
     MASKED_GH = 99
     RAW_SPLITTING_MATRIX = 98
+    OPTIMAL_SPLITTING_INFO = 97
 
 def compute_splitting_score(SM, GVec, HVec, lamb):
     G = sum(GVec)
@@ -29,6 +32,16 @@ def compute_splitting_score(SM, GVec, HVec, lamb):
     L = (GLVec*GLVec / (HLVec + lamb)) + (GRVec*GRVec / (HRVec + lamb)) - (G*G / (H + lamb))
     return L.reshape(-1)
 
+class SplittingInfo:
+    def __init__(self) -> None:
+        self.bestSplitScore = 0
+        self.bestSplitParty = None
+        self.bestSplittingVector = None
+
+    def log(self, logger):
+        logger.info("Best Splitting Score: L = %.2f, Selected Party %d",\
+                self.bestSplitScore, self.bestSplitParty)
+        logger.debug("The optimal splitting vector: \n %s", str(self.bestSplittingVector))
 
 class FedXGBoostSecureHandler:
     QR = []
@@ -109,19 +122,15 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             gh = np.concatenate((G, H), axis=1)
             nprocs = comm.Get_size()
             for partners in range(2, nprocs):   
-                logger.info("Sending G, H to party %d", partners)         
                 data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
+                logger.info("Sent G, H to party %d", partners)         
 
             # Receive the splitting matrix and find the optimal splitting score
-            bestSplitScore = 0
-            bestSplitIndex = 0
-            bestSplitParty = 0
-            bestRxSM = 0 # To be determined afterwards
-
-            for partners in range(2, nprocs):   
-                logger.info("Sending G, H to party %d", partners)         
-                rxSM = comm.recv(source = partners, tag = MSG_ID.RAW_SPLITTING_MATRIX)
             
+            sInfo = SplittingInfo()        
+            for partners in range(2, nprocs):   
+                rxSM = comm.recv(source = partners, tag = MSG_ID.RAW_SPLITTING_MATRIX)
+
                 # Find the optimal splitting score
                 sumGRVec = np.matmul(rxSM, G).reshape(-1)
                 sumHRVec = np.matmul(rxSM, H).reshape(-1)
@@ -129,36 +138,28 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 sumHLVec = sum(H) - sumHRVec
                 L = compute_splitting_score(rxSM, G, H, 0.01)
 
-                logger.info("Received from party {} \n".format(partners) + \
+                logger.info("Received SM from party {} and computed:  \n".format(partners) + \
                     "GR: " + str(sumGRVec.T) + "\n" + "HR: " + str(sumHRVec.T) +\
                     "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T) +\
                     "\nSplitting Score: {}".format(L.T))       
                 maxScore = max(L)
-                if maxScore > bestSplitScore:
-                    bestSplitScore = maxScore
-                    bestSplitParty = partners
+                if maxScore > sInfo.bestSplitScore:
+                    sInfo.bestSplitScore = maxScore
+                    sInfo.bestSplitParty = partners
                     bestCandidateIndex = np.argmax(L)
-                    bestSplittingVector = rxSM[bestCandidateIndex, :]
+                    sInfo.bestSplittingVector = rxSM[bestCandidateIndex, :]
 
-
+            sInfo.log(logger)
             # Build Tree from the feature with the optimal index
-            logger.info("Best Splitting Score: L = %.2f, Party Rank %d, Best Index %d",\
-                bestSplitScore, bestSplitParty, bestCandidateIndex)
-            logger.debug("The optimal splitting vector: \n %s", str(bestRxSM))
-                
-            # Get the optimal splitting candidates
-            lD, rD = qDataBase.partion(bestSplittingVector)
-            qDataBase.printInfo(logger)
-            lD.printInfo(logger)
-            rD.printInfo(logger)
             
+            for partners in range(2, nprocs):
+                data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
+                logger.info("Sent splitting info to clients {} \n".format(partners))
 
-            #self.grow()
-
-
+            
         elif rank != 0: # TODO: change this hard coded number
             data = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag=MSG_ID.MASKED_GH)
-            logger.info("Received G, H")         
+            logger.info("Received G, H from the active party")         
             
             # Perform the secure Sharing of the splitting matrix
             qDataBase.printInfo(logger)
@@ -169,11 +170,39 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
 
             # Send the splitting matrix to the active party
-            rxSM = comm.send(privateSM, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RAW_SPLITTING_MATRIX)
+            txSM = comm.send(privateSM, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RAW_SPLITTING_MATRIX)
+            logger.info("Sent the splitting matrix to the active party")         
+
+            sInfo = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
+            logger.info("Received the SplittingInfo from the active party")         
 
 
-    def grow(self, shared_G, shared_H, shared_S, depth=1):
-        pass
+        if(rank != 0):
+            # Get the optimal splitting candidates and partition them into two databases
+            logger.info("Partition the database for the next build")         
+            lD, rD = qDataBase.partion(sInfo.bestSplittingVector)
+            qDataBase.printInfo(logger)
+            lD.printInfo(logger)
+            rD.printInfo(logger)
+            
+
+            
+
+    def grow(self, dataBase, depth=1, maxDepth = 5):
+        leftBranch = self.buildTree_ver4(shared_gl, shared_hl, shared_sl, depth + 1)
+        rightBranch = self.buildTree_ver4(shared_gr, shared_hr, shared_sr, depth + 1)
+
+        leftBranch = TreeNode()
+        rightBranch = TreeNode() 
+
+        if depth <= maxDepth:
+            return TreeNodes
+        else:
+            return 
+        return 
+
+
+    #def build()
 
 
 class FedXGBoostClassifier(VerticalXGBoostClassifier):
