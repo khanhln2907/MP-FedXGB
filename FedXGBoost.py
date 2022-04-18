@@ -1,4 +1,5 @@
 from posixpath import split
+import random
 from numpy import concatenate
 from VerticalXGBoost import *
 from SSCalculation import *
@@ -12,6 +13,22 @@ class PARTY_ID:
 
 class MSG_ID:
     MASKED_GH = 99
+    RAW_SPLITTING_MATRIX = 98
+
+def compute_splitting_score(SM, GVec, HVec, lamb):
+    G = sum(GVec)
+    H = sum(HVec)
+    GRVec = np.matmul(SM, GVec)
+    HRVec = np.matmul(SM, HVec)
+    GLVec = G - GRVec
+    HLVec = H - HRVec
+    # logger.info("Received from party {} \n".format(partners) + \
+    #     "GR: " + str(sumGRVec.T) + "\n" + "HR: " + str(sumHRVec.T) +\
+    #     "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T))  
+
+    L = (GLVec*GLVec / (HLVec + lamb)) + (GRVec*GRVec / (HRVec + lamb)) - (G*G / (H + lamb))
+    return L[:,0]
+
 
 class FedXGBoostSecureHandler:
     QR = []
@@ -67,7 +84,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         
         elif rank != 0: # TODO: change this hard coded number
         #else:
-            data = comm.recv(source=1, tag=MSG_ID.MASKED_GH)
+            data = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag=MSG_ID.MASKED_GH)
             logger.info("Received G, H")         
             
             # Perform the secure Sharing of the splitting matrix
@@ -94,17 +111,52 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             for partners in range(2, nprocs):   
                 logger.info("Sending G, H to party %d", partners)         
                 data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
-        
+
+            # Receive the splitting matrix and find the optimal splitting score
+            bestSplitScore = 0
+            bestSplitIndex = 0
+            bestSplitParty = 0
+
+            for partners in range(2, nprocs):   
+                logger.info("Sending G, H to party %d", partners)         
+                rxSM = comm.recv(source = partners, tag = MSG_ID.RAW_SPLITTING_MATRIX)
+            
+                # Find the optimal splitting score
+                sumGRVec = np.matmul(rxSM, G).reshape(rxSM.shape[0],)
+                sumHRVec = np.matmul(rxSM, H).reshape(rxSM.shape[0],)
+                sumGLVec = sum(G) - sumGRVec
+                sumHLVec = sum(H) - sumHRVec
+                L = compute_splitting_score(rxSM, G, H, 0.01)
+
+                logger.info("Received from party {} \n".format(partners) + \
+                    "GR: " + str(sumGRVec.T) + "\n" + "HR: " + str(sumHRVec.T) +\
+                    "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T) +\
+                    "\nSplitting Score: {}".format(L.T))       
+                maxScore = max(L)
+                if maxScore > bestSplitScore:
+                    bestSplitScore = maxScore
+                    bestSplitParty = partners
+                    bestCandidates = np.where(L == maxScore)
+                    bestSplitIndex = random.choice(bestCandidates[0])
+                logger.info("Best Splitting Score: L = %.2f, Party Rank %d, Best Index %s, Selected Index %d",\
+                    bestSplitScore, bestSplitParty, str(bestCandidates), bestSplitIndex)
+             
+
+
         elif rank != 0: # TODO: change this hard coded number
-            data = comm.recv(source=1, tag=MSG_ID.MASKED_GH)
+            data = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag=MSG_ID.MASKED_GH)
             logger.info("Received G, H")         
             
             # Perform the secure Sharing of the splitting matrix
             qDataBase.printInfo(logger)
-            securedSM = qDataBase.get_merged_splitting_matrix()
-            logger.debug("Secured splitting matrix with shape of {}".format(str(securedSM.shape)) \
-                            + "\n {}".format(' '.join(map(str, securedSM))))
-            #print("Shape ", securedSM.shape)
+            privateSM = qDataBase.get_merged_splitting_matrix()
+            logger.debug("Secured splitting matrix with shape of {}".format(str(privateSM.shape)) \
+                            + "\n {}".format(' '.join(map(str, privateSM))))
+
+            # Send the splitting matrix to the active party
+            rxSM = comm.send(privateSM, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RAW_SPLITTING_MATRIX)
+
+
 
 class FedXGBoostClassifier(VerticalXGBoostClassifier):
     def __init__(self, rank, lossfunc, splitclass, _lambda=1, _gamma=0.5, _epsilon=0.1, n_estimators=3, max_depth=3):
@@ -184,6 +236,7 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
                 y_pred += update_pred
 
     def boost(self):
+        # TODO: the data is passed in the method append data
         data_num = self.data.shape[0]
         X = self.dataBase.getDataMatrix()
         if(rank == 2):
@@ -201,16 +254,8 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
             y_and_pred = np.concatenate((y, y_pred), axis=1)
 
             # Perform tree boosting
-            #self.trees[i].fit(y_and_pred, i, self.data, self.quantile)
-            # for key, feature in self.dataBase.featureDict.items():
-            #     print(key, feature)
-            #     #self.featureDict[key] = QuantiledFeature(key, feature.dataVector)
-
             dataFit = QuantiledDataBase(self.dataBase)
-
             self.trees[i].fit(y_and_pred, i, dataFit)
-            
-
 
             if i == self.n_estimators - 1: # The last tree, no need for prediction update.
                 continue
@@ -248,11 +293,11 @@ def test():
 
     # np.concatenate((X_train_A, y_train))
     if rank == 1:
-        print("Test A", len(X_train_A), len(X_train_A[0]), len(y_train), len(y_train[0]))
-        print("Test A", X_train_A.shape[0], len(X_train_A[0]), len(y_train), len(y_train[0]))
+        #print("Test A", len(X_train_A), len(X_train_A[0]), len(y_train), len(y_train[0]))
+        #print("Test A", X_train_A.shape[0], len(X_train_A[0]), len(y_train), len(y_train[0]))
         model.appendData(np.concatenate((X_train_A, y_train), 1))
     elif rank == 2:
-        print("Test", len(X_train_B), len(X_train_B[0]), len(y_train), len(y_train[0]))
+        #print("Test", len(X_train_B), len(X_train_B[0]), len(y_train), len(y_train[0]))
         model.appendData(np.concatenate((X_train_B, y_train), 1))
     elif rank == 3:
         model.appendData(np.concatenate((X_train_C, y_train), 1))

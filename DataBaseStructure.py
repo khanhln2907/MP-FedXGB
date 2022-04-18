@@ -4,7 +4,7 @@ from scipy import rand
 
 
 class QuantileParam:
-    epsilon = 0.02
+    epsilon = 0.2
 
 class FeatureData:
     def __init__(self, name, dataVector) -> None:
@@ -125,13 +125,11 @@ class QuantiledDataBase(DataBase):
     def get_merged_splitting_matrix(self):
         retMergedSM = None
         for key, feature in self.featureDict.items():
-            sm, sc = self.featureDict[key].get_splitting_info()
-            #print("Shape Feature ", key," SM ", sm.shape, type(sm))
-
+            fSM, sc = self.featureDict[key].get_splitting_info()
             if retMergedSM is None:
-                retMergedSM = sm
+                retMergedSM = fSM
             else:
-                retMergedSM = np.concatenate((retMergedSM,sm))  
+                retMergedSM = np.concatenate((retMergedSM,fSM))  
         return retMergedSM
 
 def testQuantile():
