@@ -27,7 +27,7 @@ def compute_splitting_score(SM, GVec, HVec, lamb):
     #     "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T))  
 
     L = (GLVec*GLVec / (HLVec + lamb)) + (GRVec*GRVec / (HRVec + lamb)) - (G*G / (H + lamb))
-    return L[:,0]
+    return L.reshape(-1)
 
 
 class FedXGBoostSecureHandler:
@@ -116,14 +116,15 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             bestSplitScore = 0
             bestSplitIndex = 0
             bestSplitParty = 0
+            bestRxSM = 0 # To be determined afterwards
 
             for partners in range(2, nprocs):   
                 logger.info("Sending G, H to party %d", partners)         
                 rxSM = comm.recv(source = partners, tag = MSG_ID.RAW_SPLITTING_MATRIX)
             
                 # Find the optimal splitting score
-                sumGRVec = np.matmul(rxSM, G).reshape(rxSM.shape[0],)
-                sumHRVec = np.matmul(rxSM, H).reshape(rxSM.shape[0],)
+                sumGRVec = np.matmul(rxSM, G).reshape(-1)
+                sumHRVec = np.matmul(rxSM, H).reshape(-1)
                 sumGLVec = sum(G) - sumGRVec
                 sumHLVec = sum(H) - sumHRVec
                 L = compute_splitting_score(rxSM, G, H, 0.01)
@@ -136,11 +137,23 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 if maxScore > bestSplitScore:
                     bestSplitScore = maxScore
                     bestSplitParty = partners
-                    bestCandidates = np.where(L == maxScore)
-                    bestSplitIndex = random.choice(bestCandidates[0])
-                logger.info("Best Splitting Score: L = %.2f, Party Rank %d, Best Index %s, Selected Index %d",\
-                    bestSplitScore, bestSplitParty, str(bestCandidates), bestSplitIndex)
-             
+                    bestCandidateIndex = np.argmax(L)
+                    bestSplittingVector = rxSM[bestCandidateIndex, :]
+
+
+            # Build Tree from the feature with the optimal index
+            logger.info("Best Splitting Score: L = %.2f, Party Rank %d, Best Index %d",\
+                bestSplitScore, bestSplitParty, bestCandidateIndex)
+            logger.debug("The optimal splitting vector: \n %s", str(bestRxSM))
+                
+            # Get the optimal splitting candidates
+            lD, rD = qDataBase.partion(bestSplittingVector)
+            qDataBase.printInfo(logger)
+            lD.printInfo(logger)
+            rD.printInfo(logger)
+            
+
+            #self.grow()
 
 
         elif rank != 0: # TODO: change this hard coded number
@@ -152,10 +165,15 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             privateSM = qDataBase.get_merged_splitting_matrix()
             logger.debug("Secured splitting matrix with shape of {}".format(str(privateSM.shape)) \
                             + "\n {}".format(' '.join(map(str, privateSM))))
+            logger.debug("Secured splitting matrix: \n %s", str(privateSM))
+
 
             # Send the splitting matrix to the active party
             rxSM = comm.send(privateSM, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RAW_SPLITTING_MATRIX)
 
+
+    def grow(self, shared_G, shared_H, shared_S, depth=1):
+        pass
 
 
 class FedXGBoostClassifier(VerticalXGBoostClassifier):
@@ -207,7 +225,7 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
 
     def printInfo(self):
         featureListStr = '' 
-        self.dataBase.printInfo()
+        self.dataBase.printInfo(logger)
 
     def boostDepr(self):
         data_num = self.data.shape[0]

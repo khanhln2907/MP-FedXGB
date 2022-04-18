@@ -90,18 +90,23 @@ class QuantiledFeature(FeatureData):
 class DataBase:
     def __init__(self) -> None:
         self.featureDict = {}
+        self.nUsers = 0
+
 
     def appendFeature(self, featureData: FeatureData):
         #self.featureData.append(featureData)
         self.featureDict[featureData.name] = featureData.data
+        self.nUsers = len(featureData.data)
+        print("Test, ", self.nUsers)
 
-    def printInfo(self):
+    def printInfo(self, logger):
         fNameList = ''
         for fName, fData in self.featureDict.items():
             fNameList += fName + '; '
         #print("Existing Feature: ", fNameList)
         #print(self.getDataMatrix())
 
+    
     def getDataMatrix(self, nameFeature = None):
         X = pd.DataFrame(self.featureDict).values
         return X
@@ -109,15 +114,14 @@ class DataBase:
 class QuantiledDataBase(DataBase):
     def __init__(self, dataBase:DataBase = None) -> None:
         super().__init__()
-
+        self.nUsers = dataBase.nUsers
         # Perform the quantiled for all the feature (copy, don't change the orgiginal data)
         if dataBase is not None:
             for feature, value in dataBase.featureDict.items():
                 self.featureDict[feature] = QuantiledFeature(feature, value)
 
-
     def printInfo(self, logger):
-        logger.info("Total feature amount: %d",  len(self.featureDict.items()))
+        logger.info("nUsers: %d nFeature: %d", self.nUsers, len(self.featureDict.items()))
         for key, feature in self.featureDict.items():
             sm, sc = self.featureDict[key].get_splitting_info()
             logger.info("{} splitting candidates of feature {}".format(str(len(sc)), key) + " [{}]".format(' '.join(map(str, sc))))
@@ -131,6 +135,26 @@ class QuantiledDataBase(DataBase):
             else:
                 retMergedSM = np.concatenate((retMergedSM,fSM))  
         return retMergedSM
+
+    def partion(self, splittingVector):
+        """
+        Partition the database to two left and right databases according to the spliitng vector
+        The returned QuantiledDatabase  perform the quantile (proposal of the splitting matrices within its constructor)
+        """
+        # assert Numel of splitting vector and the amount of users
+        retL = DataBase()
+        retR = DataBase()
+
+        for feature, value in self.featureDict.items():
+            leftDictData = self.featureDict[feature].data[splittingVector == 0]
+            rightDictData = self.featureDict[feature].data[splittingVector == 1]
+            
+            retL.appendFeature(FeatureData(feature, leftDictData))
+            retR.appendFeature(FeatureData(feature, rightDictData))
+
+        return QuantiledDataBase(retL), QuantiledDataBase(retR)
+
+
 
 def testQuantile():
     vec = rand(100)

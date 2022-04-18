@@ -507,7 +507,6 @@ class VerticalXGBoostTree:
             size = sum(size_list[1:])
         self.featureNum = comm.bcast(size, root=2)  # Broadcast how many feature there are in total.
         if self.rank == 2:
-            #print('DCM, rank: ', self.rank)
             random_list = np.random.permutation(self.featureNum)
             start = 0
             for i in range(1, clientNum + 1):
