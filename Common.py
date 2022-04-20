@@ -17,6 +17,10 @@ logger.setLevel(logging.DEBUG)
 
 logger.warning("Hello World")
 
+class TreeNodeType:
+    ROOT = "Root"
+    LEFT = "Left"
+    RIGHT = "Right"
 
 
 # class PARTY_ID:

@@ -1,5 +1,7 @@
 from posixpath import split
 import random
+from tkinter import N
+from gpg import Data
 from numpy import concatenate
 from VerticalXGBoost import *
 from SSCalculation import *
@@ -8,7 +10,7 @@ import logging
 from DataBaseStructure import *
 from TreeStructure import *
 
-from Common import logger
+from Common import logger, TreeNodeType
 
 class PARTY_ID:
     ACTIVE_PARTY = 1
@@ -42,7 +44,7 @@ class SplittingInfo:
     def log(self, logger):
         logger.info("Best Splitting Score: L = %.2f, Selected Party %s",\
                 self.bestSplitScore, str(self.bestSplitParty))
-        logger.debug("The optimal splitting vector: \n %s", str(self.bestSplittingVector))
+        logger.debug("The optimal splitting vector: %s", str(self.bestSplittingVector))
 
 class FedXGBoostSecureHandler:
     QR = []
@@ -140,12 +142,15 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             qDataBase.appendGradientsHessian(dummyG, dummyH)
 
         if(rank != 0):
-            self.grow(qDataBase, depth = 0)
+            self.grow(qDataBase, depth = 0, NodeDirection = TreeNodeType.ROOT)
 
-            
+    def generate_leaf(self, gVec, hVec, lamb = 0.1):
+        gI = sum(gVec) 
+        hI = sum(hVec)
+        return -1.0 * gI / (hI + lamb) 
 
-    def grow(self, qDataBase: QuantiledDataBase, depth=0):
-        logger.info("Tree is growing depth-wise. Current depth: %d", depth)
+    def grow(self, qDataBase: QuantiledDataBase, depth=0, NodeDirection = TreeNodeType.ROOT):
+        logger.info("Tree is growing depth-wise. Current depth: {}".format(depth) + " Node's type: {}".format(NodeDirection))
 
         if self.rank == PARTY_ID.ACTIVE_PARTY:
             sInfo = SplittingInfo()
@@ -160,7 +165,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 sumHLVec = sum(qDataBase.hessVec) - sumHRVec
                 L = compute_splitting_score(rxSM, qDataBase.gradVec, qDataBase.hessVec, 0.01)
 
-                logger.info("Received SM from party {} and computed:  \n".format(partners) + \
+                logger.debug("Received SM from party {} and computed:  \n".format(partners) + \
                     "GR: " + str(sumGRVec.T) + "\n" + "HR: " + str(sumHRVec.T) +\
                     "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T) +\
                     "\nSplitting Score: {}".format(L.T))       
@@ -196,27 +201,35 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             logger.info("Sent the splitting matrix to the active party")         
 
             sInfo = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
-            logger.info("Received the SplittingInfo from the active party")   
+            logger.info("Received the Splitting Info from the active party")   
 
         # Get the optimal splitting candidates and partition them into two databases
-        logger.info("Partition the database for the next build")   
-        
-        #print(sInfo.bestSplittingVector)
-
         if(sInfo.bestSplittingVector is not None):
-            print("Testing type, ", sInfo.bestSplittingVector)      
             lD, rD = qDataBase.partition(sInfo.bestSplittingVector)
+            logger.info("")
+            logger.info("Database is partitioned into two quantiled databases!")
+            logger.info("Original database: %s", qDataBase.get_info_string())
+            logger.info("Left splitted database: %s", lD.get_info_string())
+            logger.info("Right splitted database: %s \n", rD.get_info_string())
+
             maxDepth = 3
             # Construct the new tree if the gain is positive
             if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
-                logger.info("Score: %f, Depth: %d", sInfo.bestSplitScore, depth)
                 depth += 1
-                self.grow(lD, depth)
-                self.grow(rD, depth)
+                lB = self.grow(lD, depth,NodeDirection = TreeNodeType.LEFT)
+                rB = self.grow(rD, depth, NodeDirection = TreeNodeType.RIGHT)
             else:
-                print("Fuck")
-                pass
-            
+                w = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
+
+                logger.warning("Reached max-depth. Terminate the tree growing process ...")
+                logger.debug("Leaf Weight: %f", w)
+                return w
+        else:
+            logger.warning("Gain is negative. Terminate the tree growing process ...")
+            w = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
+            logger.debug("Leaf Weight: %f", w)
+            return w
+              
 
 
 class FedXGBoostClassifier(VerticalXGBoostClassifier):
@@ -393,7 +406,12 @@ def test():
         #     print(y_test[i], y_pred[i], y_ori[i])
     pass
 
-test()
+
+try:
+    test()
+except Exception as e:
+  logging.error("Exception occurred", exc_info=True)
+
 
 
 

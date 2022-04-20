@@ -124,11 +124,14 @@ class QuantiledDataBase(DataBase):
         self.gradVec = []
         self.hessVec = []
 
-    def printInfo(self):
+    def get_info_string(self):
+        Str = "nUsers: %d nFeature: %d" % (self.nUsers, len(self.featureDict.items()))
         logger.info("nUsers: %d nFeature: %d", self.nUsers, len(self.featureDict.items()))
         for key, feature in self.featureDict.items():
             sm, sc = self.featureDict[key].get_splitting_info()
             logger.info("{} splitting candidates of feature {}".format(str(len(sc)), key) + " [{}]".format(' '.join(map(str, sc))))
+            Str += "{} splitting candidates of feature {}".format(str(len(sc)), key) + " [{}]".format(' '.join(map(str, sc)))
+        return Str
 
     def get_merged_splitting_matrix(self):
         retMergedSM = None
@@ -155,22 +158,12 @@ class QuantiledDataBase(DataBase):
             
             retL.appendFeature(FeatureData(feature, leftDictData))
             retR.appendFeature(FeatureData(feature, rightDictData))
-            print("Here", len(leftDictData), len(rightDictData), len(splittingVector))
-        print("Watching nUsers ",rank, retL.nUsers, retR.nUsers, len(leftDictData), len(rightDictData))
         
         retL = QuantiledDataBase(retL)
         retL.appendGradientsHessian(self.gradVec[splittingVector == 0], self.hessVec[splittingVector == 0])
 
         retR = QuantiledDataBase(retR)
         retR.appendGradientsHessian(self.gradVec[splittingVector == 1], self.hessVec[splittingVector == 1])
-
-        logger.info("Database is partitioned into two quantiled databases!")
-        logger.debug("Original Database: ")
-        self.printInfo()
-        logger.debug("New Databases: ")
-        retL.printInfo()
-        retR.printInfo()
-        
 
         return retL, retR
 
