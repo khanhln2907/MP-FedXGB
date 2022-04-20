@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy import rand
 
-from Common import logger
+from Common import logger,rank
 
 
 class QuantileParam:
@@ -140,7 +140,7 @@ class QuantiledDataBase(DataBase):
                 retMergedSM = np.concatenate((retMergedSM,fSM))  
         return retMergedSM
 
-    def partion(self, splittingVector):
+    def partition(self, splittingVector):
         """
         Partition the database to two left and right databases according to the spliitng vector
         The returned QuantiledDatabase  perform the quantile (proposal of the splitting matrices within its constructor)
@@ -155,7 +155,8 @@ class QuantiledDataBase(DataBase):
             
             retL.appendFeature(FeatureData(feature, leftDictData))
             retR.appendFeature(FeatureData(feature, rightDictData))
-            #print("nUsers ", retL.nUsers, retR.nUsers)
+            print("Here", len(leftDictData), len(rightDictData), len(splittingVector))
+        print("Watching nUsers ",rank, retL.nUsers, retR.nUsers, len(leftDictData), len(rightDictData))
         
         retL = QuantiledDataBase(retL)
         retL.appendGradientsHessian(self.gradVec[splittingVector == 0], self.hessVec[splittingVector == 0])

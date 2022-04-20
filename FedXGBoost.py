@@ -40,8 +40,8 @@ class SplittingInfo:
         self.bestSplittingVector = None
 
     def log(self, logger):
-        logger.info("Best Splitting Score: L = %.2f, Selected Party %d",\
-                self.bestSplitScore, self.bestSplitParty)
+        logger.info("Best Splitting Score: L = %.2f, Selected Party %s",\
+                self.bestSplitScore, str(self.bestSplitParty))
         logger.debug("The optimal splitting vector: \n %s", str(self.bestSplittingVector))
 
 class FedXGBoostSecureHandler:
@@ -108,6 +108,8 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 pass
 
     def fit(self, y_and_pred, treeID, qDataBase: QuantiledDataBase):
+        logger.info("Tree is growing row-wise. Current column: %d", treeID)
+
         super().fit(y_and_pred, treeID)
 
         """
@@ -122,7 +124,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             logger.debug("G {}".format(' '.join(map(str, G))))
             logger.debug("H {}".format(' '.join(map(str, H))))
 
-            nprocs = comm.Get_size()
+            # nprocs = comm.Get_size()
             # for partners in range(2, nprocs):   
             #     data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
             #     logger.info("Sent G, H to party %d", partners)         
@@ -138,12 +140,13 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             qDataBase.appendGradientsHessian(dummyG, dummyH)
 
         if(rank != 0):
-            maxDepth = 4
             self.grow(qDataBase, depth = 0)
 
             
 
-    def grow(self, qDataBase: QuantiledDataBase, depth=1):
+    def grow(self, qDataBase: QuantiledDataBase, depth=0):
+        logger.info("Tree is growing depth-wise. Current depth: %d", depth)
+
         if self.rank == PARTY_ID.ACTIVE_PARTY:
             sInfo = SplittingInfo()
             nprocs = comm.Get_size()        
@@ -163,15 +166,18 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                     "\nSplitting Score: {}".format(L.T))       
                 maxScore = max(L)
                 
+                
                 if maxScore > sInfo.bestSplitScore:
                     sInfo.bestSplitScore = maxScore
                     sInfo.bestSplitParty = partners
                     bestCandidateIndex = np.argmax(L)
                     sInfo.bestSplittingVector = rxSM[bestCandidateIndex, :]
-                    print(sInfo.bestSplittingVector)
+                    #print(sInfo.bestSplittingVector)
 
             # Log the splitting info
+            
             sInfo.log(logger)
+            
             # Build Tree from the feature with the optimal index
             for partners in range(2, nprocs):
                     data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
@@ -193,19 +199,23 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             logger.info("Received the SplittingInfo from the active party")   
 
         # Get the optimal splitting candidates and partition them into two databases
-        logger.info("Partition the database for the next build")         
-        lD, rD = qDataBase.partion(sInfo.bestSplittingVector)
+        logger.info("Partition the database for the next build")   
         
-        depth += 1
-        maxDepth = 4
-        # Construct the new tree if the gain is positive
-        if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
-            logger.info("Score: %f, Depth: %d", sInfo.bestSplitScore, depth)
-            self.grow(lD, depth)
-            self.grow(rD, depth)
-        else:
-            print("Fuck")
-            pass
+        #print(sInfo.bestSplittingVector)
+
+        if(sInfo.bestSplittingVector is not None):
+            print("Testing type, ", sInfo.bestSplittingVector)      
+            lD, rD = qDataBase.partition(sInfo.bestSplittingVector)
+            maxDepth = 3
+            # Construct the new tree if the gain is positive
+            if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
+                logger.info("Score: %f, Depth: %d", sInfo.bestSplitScore, depth)
+                depth += 1
+                self.grow(lD, depth)
+                self.grow(rD, depth)
+            else:
+                print("Fuck")
+                pass
             
 
 
