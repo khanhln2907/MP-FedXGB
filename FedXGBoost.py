@@ -8,6 +8,7 @@ import logging
 from DataBaseStructure import *
 from TreeStructure import *
 
+from Common import logger
 
 class PARTY_ID:
     ACTIVE_PARTY = 1
@@ -122,18 +123,24 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             logger.debug("H {}".format(' '.join(map(str, H))))
 
             nprocs = comm.Get_size()
-            for partners in range(2, nprocs):   
-                data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
-                logger.info("Sent G, H to party %d", partners)         
+            # for partners in range(2, nprocs):   
+            #     data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
+            #     logger.info("Sent G, H to party %d", partners)         
 
-            # Receive the splitting matrix and find the optimal splitting score
-            
             qDataBase.appendGradientsHessian(G, H) 
+
+        else:
+            # data = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag=MSG_ID.MASKED_GH)
+            # logger.info("Received G, H from the active party")
+
+            dummyG = np.zeros((qDataBase.nUsers,1))
+            dummyH = np.zeros((qDataBase.nUsers,1))
+            qDataBase.appendGradientsHessian(dummyG, dummyH)
 
         if(rank != 0):
             maxDepth = 4
             self.grow(qDataBase, depth = 0)
-            
+
             
 
     def grow(self, qDataBase: QuantiledDataBase, depth=1):
@@ -161,19 +168,17 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                     sInfo.bestSplitParty = partners
                     bestCandidateIndex = np.argmax(L)
                     sInfo.bestSplittingVector = rxSM[bestCandidateIndex, :]
+                    print(sInfo.bestSplittingVector)
 
             # Log the splitting info
             sInfo.log(logger)
             # Build Tree from the feature with the optimal index
             for partners in range(2, nprocs):
                     data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
-                    logger.info("Sent splitting info to clients {} \n".format(partners))
-        elif (rank != 0):
-            data = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag=MSG_ID.MASKED_GH)
-            logger.info("Received G, H from the active party")         
-            
+                    logger.info("Sent splitting info to clients {}".format(partners))
+        elif (rank != 0):           
             # Perform the secure Sharing of the splitting matrix
-            qDataBase.printInfo(logger)
+            # qDataBase.printInfo()
             privateSM = qDataBase.get_merged_splitting_matrix()
             logger.debug("Secured splitting matrix with shape of {}".format(str(privateSM.shape)) \
                             + "\n {}".format(' '.join(map(str, privateSM))))
@@ -190,18 +195,17 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         # Get the optimal splitting candidates and partition them into two databases
         logger.info("Partition the database for the next build")         
         lD, rD = qDataBase.partion(sInfo.bestSplittingVector)
-        qDataBase.printInfo(logger)
-        lD.printInfo(logger)
-        rD.printInfo(logger)
         
-        # depth += 1
-        # maxDepth = 4
-        # # Construct the new tree if the gain is positive
-        # if depth <= maxDepth & sInfo.bestSplitScore > 0:
-        #     self.fit(lD)
-        # else:
-            
-        #     pass
+        depth += 1
+        maxDepth = 4
+        # Construct the new tree if the gain is positive
+        if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
+            logger.info("Score: %f, Depth: %d", sInfo.bestSplitScore, depth)
+            self.grow(lD, depth)
+            self.grow(rD, depth)
+        else:
+            print("Fuck")
+            pass
             
 
 
@@ -254,7 +258,7 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
 
     def printInfo(self):
         featureListStr = '' 
-        self.dataBase.printInfo(logger)
+        self.dataBase.printInfo()
 
     def boostDepr(self):
         data_num = self.data.shape[0]
@@ -379,112 +383,94 @@ def test():
         #     print(y_test[i], y_pred[i], y_ori[i])
     pass
 
-
-
-np.random.seed(10)
-clientNum = 4
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-
-
-logger = logging.getLogger()
-logName = 'Log/FedXGBoost_%d.log' % rank
-file_handler = logging.FileHandler(logName, mode='w')
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-logger.setLevel(logging.DEBUG)
-
-logger.warning("Hello World")
-
-
-
-#test()
-
-
-from VerticalXGBoost import main2
-
-def main4():
-    data = pd.read_csv('./GiveMeSomeCredit/cs-training.csv')
-    data.dropna(inplace=True)
-    data = data[['SeriousDlqin2yrs',
-       'RevolvingUtilizationOfUnsecuredLines', 'age',
-       'NumberOfTime30-59DaysPastDueNotWorse', 'DebtRatio', 'MonthlyIncome',
-       'NumberOfOpenCreditLinesAndLoans', 'NumberOfTimes90DaysLate',
-       'NumberRealEstateLoansOrLines', 'NumberOfTime60-89DaysPastDueNotWorse',
-       'NumberOfDependents']].values
-    ori_data = data.copy()
-    # Add features
-    # for i in range(1):
-    #     data = np.concatenate((data, ori_data[:, 1:]), axis=1)
-    data = data / data.max(axis=0)
-
-    ratio = 10000 / data.shape[0]
-
-
-    zero_index = data[:, 0] == 0
-    one_index = data[:, 0] == 1
-    zero_data = data[zero_index]
-    one_data = data[one_index]
-    zero_ratio = len(zero_data) / data.shape[0]
-    one_ratio = len(one_data) / data.shape[0]
-    num = 7500
-    train_size_zero = int(zero_data.shape[0] * ratio) + 1
-    train_size_one = int(one_data.shape[0] * ratio)
-    X_train, X_test = np.concatenate((zero_data[:train_size_zero, 1:], one_data[:train_size_one, 1:]), 0), \
-                      np.concatenate((zero_data[train_size_zero:train_size_zero+int(num * zero_ratio)+1, 1:], one_data[train_size_one:train_size_one+int(num * one_ratio), 1:]), 0)
-    y_train, y_test = np.concatenate(
-        (zero_data[:train_size_zero, 0].reshape(-1, 1), one_data[:train_size_one, 0].reshape(-1, 1)), 0), \
-                      np.concatenate((zero_data[train_size_zero:train_size_zero+int(num * zero_ratio)+1, 0].reshape(-1, 1),
-                                      one_data[train_size_one:train_size_one+int(num * one_ratio), 0].reshape(-1, 1)), 0)
-
-    X_train_A = X_train[:, :2]
-    X_train_B = X_train[:, 2:4]
-    X_train_C = X_train[:, 4:7]
-    X_train_D = X_train[:, 7:]
-    X_test_A = X_test[:, :2]
-    X_test_B = X_test[:, 2:4]
-    X_test_C = X_test[:, 4:7]
-    X_test_D = X_test[:, 7:]
-
-    splitclass = SSCalculate()
-    model = FedXGBoostClassifier(rank=rank, lossfunc='LogLoss', splitclass=splitclass, max_depth=3, n_estimators=3, _epsilon=0.1)
-
-    start = datetime.now()
-    if rank == 1:
-        model.appendData(np.concatenate(X_train_A, y_train))
-    elif rank == 2:
-        model.appendData(np.concatenate(X_train_B, y_train))
-    elif rank == 3:
-        model.appendData(np.concatenate(X_train_C, y_train))
-    elif rank == 4:
-        model.appendData(np.concatenate(X_train_D, y_train))
-    else:
-        model.appendData(np.concatenate(X_train_A, y_train))
-
-    model.boost()
-
-    if rank == 1:
-        y_pred = model.predict(X_test_A)
-    elif rank == 2:
-        y_pred = model.predict(X_test_B)
-    elif rank == 3:
-        y_pred = model.predict(X_test_C)
-    elif rank == 4:
-        y_pred = model.predict(X_test_D)
-    else:
-        model.predict(np.zeros_like(X_test_A))
-
-    if rank == 1:
-        y_pred = 1.0 / (1.0 + np.exp(-y_pred))
-        y_pred[y_pred > 0.5] = 1
-        y_pred[y_pred <= 0.5] = 0
-        result = y_pred - y_test
-        print(np.sum(result == 0) / y_pred.shape[0])
-        # for i in range(y_test.shape[0]):
-        #     print(y_test[i], y_pred[i], y_ori[i])
-    pass
-
 test()
+
+
+
+
+
+# from VerticalXGBoost import main2
+
+# def main4():
+#     data = pd.read_csv('./GiveMeSomeCredit/cs-training.csv')
+#     data.dropna(inplace=True)
+#     data = data[['SeriousDlqin2yrs',
+#        'RevolvingUtilizationOfUnsecuredLines', 'age',
+#        'NumberOfTime30-59DaysPastDueNotWorse', 'DebtRatio', 'MonthlyIncome',
+#        'NumberOfOpenCreditLinesAndLoans', 'NumberOfTimes90DaysLate',
+#        'NumberRealEstateLoansOrLines', 'NumberOfTime60-89DaysPastDueNotWorse',
+#        'NumberOfDependents']].values
+#     ori_data = data.copy()
+#     # Add features
+#     # for i in range(1):
+#     #     data = np.concatenate((data, ori_data[:, 1:]), axis=1)
+#     data = data / data.max(axis=0)
+
+#     ratio = 10000 / data.shape[0]
+
+
+#     zero_index = data[:, 0] == 0
+#     one_index = data[:, 0] == 1
+#     zero_data = data[zero_index]
+#     one_data = data[one_index]
+#     zero_ratio = len(zero_data) / data.shape[0]
+#     one_ratio = len(one_data) / data.shape[0]
+#     num = 7500
+#     train_size_zero = int(zero_data.shape[0] * ratio) + 1
+#     train_size_one = int(one_data.shape[0] * ratio)
+#     X_train, X_test = np.concatenate((zero_data[:train_size_zero, 1:], one_data[:train_size_one, 1:]), 0), \
+#                       np.concatenate((zero_data[train_size_zero:train_size_zero+int(num * zero_ratio)+1, 1:], one_data[train_size_one:train_size_one+int(num * one_ratio), 1:]), 0)
+#     y_train, y_test = np.concatenate(
+#         (zero_data[:train_size_zero, 0].reshape(-1, 1), one_data[:train_size_one, 0].reshape(-1, 1)), 0), \
+#                       np.concatenate((zero_data[train_size_zero:train_size_zero+int(num * zero_ratio)+1, 0].reshape(-1, 1),
+#                                       one_data[train_size_one:train_size_one+int(num * one_ratio), 0].reshape(-1, 1)), 0)
+
+#     X_train_A = X_train[:, :2]
+#     X_train_B = X_train[:, 2:4]
+#     X_train_C = X_train[:, 4:7]
+#     X_train_D = X_train[:, 7:]
+#     X_test_A = X_test[:, :2]
+#     X_test_B = X_test[:, 2:4]
+#     X_test_C = X_test[:, 4:7]
+#     X_test_D = X_test[:, 7:]
+
+#     splitclass = SSCalculate()
+#     model = FedXGBoostClassifier(rank=rank, lossfunc='LogLoss', splitclass=splitclass, max_depth=3, n_estimators=3, _epsilon=0.1)
+
+#     start = datetime.now()
+#     if rank == 1:
+#         model.appendData(np.concatenate(X_train_A, y_train))
+#     elif rank == 2:
+#         model.appendData(np.concatenate(X_train_B, y_train))
+#     elif rank == 3:
+#         model.appendData(np.concatenate(X_train_C, y_train))
+#     elif rank == 4:
+#         model.appendData(np.concatenate(X_train_D, y_train))
+#     else:
+#         model.appendData(np.concatenate(X_train_A, y_train))
+
+#     model.boost()
+
+#     if rank == 1:
+#         y_pred = model.predict(X_test_A)
+#     elif rank == 2:
+#         y_pred = model.predict(X_test_B)
+#     elif rank == 3:
+#         y_pred = model.predict(X_test_C)
+#     elif rank == 4:
+#         y_pred = model.predict(X_test_D)
+#     else:
+#         model.predict(np.zeros_like(X_test_A))
+
+#     if rank == 1:
+#         y_pred = 1.0 / (1.0 + np.exp(-y_pred))
+#         y_pred[y_pred > 0.5] = 1
+#         y_pred[y_pred <= 0.5] = 0
+#         result = y_pred - y_test
+#         print(np.sum(result == 0) / y_pred.shape[0])
+#         # for i in range(y_test.shape[0]):
+#         #     print(y_test[i], y_pred[i], y_ori[i])
+#     pass
+
 #main4()
 

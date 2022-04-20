@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from scipy import rand
 
+from Common import logger
+
 
 class QuantileParam:
     epsilon = 0.2
@@ -97,9 +99,8 @@ class DataBase:
         #self.featureData.append(featureData)
         self.featureDict[featureData.name] = featureData.data
         self.nUsers = len(featureData.data)
-        print("Test, ", self.nUsers)
 
-    def printInfo(self, logger):
+    def printInfo(self):
         fNameList = ''
         for fName, fData in self.featureDict.items():
             fNameList += fName + '; '
@@ -123,7 +124,7 @@ class QuantiledDataBase(DataBase):
         self.gradVec = []
         self.hessVec = []
 
-    def printInfo(self, logger):
+    def printInfo(self):
         logger.info("nUsers: %d nFeature: %d", self.nUsers, len(self.featureDict.items()))
         for key, feature in self.featureDict.items():
             sm, sc = self.featureDict[key].get_splitting_info()
@@ -154,16 +155,23 @@ class QuantiledDataBase(DataBase):
             
             retL.appendFeature(FeatureData(feature, leftDictData))
             retR.appendFeature(FeatureData(feature, rightDictData))
-
+            #print("nUsers ", retL.nUsers, retR.nUsers)
+        
         retL = QuantiledDataBase(retL)
-        print(self.gradVec)
-        print(splittingVector == 0)
         retL.appendGradientsHessian(self.gradVec[splittingVector == 0], self.hessVec[splittingVector == 0])
 
-        retH = QuantiledDataBase(retR)
-        retH.appendGradientsHessian(self.gradVec[splittingVector == 1], self.hessVec[splittingVector == 1])
+        retR = QuantiledDataBase(retR)
+        retR.appendGradientsHessian(self.gradVec[splittingVector == 1], self.hessVec[splittingVector == 1])
 
-        return QuantiledDataBase(retL), QuantiledDataBase(retR)
+        logger.info("Database is partitioned into two quantiled databases!")
+        logger.debug("Original Database: ")
+        self.printInfo()
+        logger.debug("New Databases: ")
+        retL.printInfo()
+        retR.printInfo()
+        
+
+        return retL, retR
 
     def appendGradientsHessian(self, g, h):
         self.gradVec = g
