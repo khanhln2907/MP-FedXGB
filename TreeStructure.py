@@ -18,15 +18,21 @@ class TreeNode:
     def get_string_recursive(self):
         str = ""
         if(self.leftBranch is not None) and (self.rightBranch is not None):
-            str += "[MyID: {} Child L: {} Child R: {} Weight: {}]".format(id(self), id(self.leftBranch), id(self.rightBranch), self.weight)
+            str += "[Addr: {} Child L: {} Child R: {} Weight: {}]".format(id(self), id(self.leftBranch), id(self.rightBranch), self.weight)
             str += "{}".format(self.get_private_info())
             str += " \nChild Info \nLeft Node: {} \nRight Node: {}".format(self.leftBranch.get_string_recursive(), self.rightBranch.get_string_recursive())
         else:
-            str += "[TreeLeaf| MyID: {} Weight: {}]".format(id(self), self.weight)
+            str += "[TreeLeaf| Addr: {} Weight: {}]".format(id(self), self.weight)
         return str
 
-    def get_private_info():
+    def get_private_info(self):
         return
+
+    def show_tree_structure(self):
+
+
+
+        pass
 
 class FLTreeNode(TreeNode):
     def __init__(self, weight=0, leftBranch=None, rightBranch=None, ownerID = -1):
