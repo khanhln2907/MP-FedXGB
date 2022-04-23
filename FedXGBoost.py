@@ -38,7 +38,7 @@ def compute_splitting_score(SM, GVec, HVec, lamb):
 
 class SplittingInfo:
     def __init__(self) -> None:
-        self.bestSplitScore = 0
+        self.bestSplitScore = -np.Infinity
         self.bestSplitParty = None
         self.bestSplittingVector = None
 
@@ -152,7 +152,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             if(treeID == 0 and (rank == 1)):
                 treeInfo = self.root.get_string_recursive()
                 logger.info("Tree Info:\n%s", treeInfo)
-                print(treeInfo)
+                #print(treeInfo)
 
     def generate_leaf(self, gVec, hVec, lamb = 0.1):
         gI = sum(gVec) 
@@ -180,18 +180,32 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                     "GR: " + str(sumGRVec.T) + "\n" + "HR: " + str(sumHRVec.T) +\
                     "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T) +\
                     "\nSplitting Score: {}".format(L.T))       
-                maxScore = max(L)
                 
-                
-                if maxScore > sInfo.bestSplitScore:
+                # Optimal candidate of 1 partner party
+                # Select the optimal candidates without all zeros or one elements of the splitting)
+                isValid = False
+                excId = np.zeros(L.size, dtype=bool)
+                for id in range(len(L)):
+                    splitVector = rxSM[id, :]
+                    isValid = not(np.all((splitVector == 0.0)) or np.all((splitVector == 1.0)))
+                    if isValid:
+                        pass
+                    else:
+                        excId[id] = True
+
+                bestSplitId = 0
+                tmpL = np.ma.array(L, mask=excId) # Mask the exception index
+                bestSplitId = np.argmax(tmpL)
+                splitVector = rxSM[bestSplitId, :]
+                maxScore = L[bestSplitId]     
+                # Select the optimal over all partner parties
+                if (maxScore > sInfo.bestSplitScore):
                     sInfo.bestSplitScore = maxScore
                     sInfo.bestSplitParty = partners
-                    bestCandidateIndex = np.argmax(L)
+                    bestCandidateIndex = bestSplitId
                     sInfo.bestSplittingVector = rxSM[bestCandidateIndex, :]
-                    #print(sInfo.bestSplittingVector)
-
+                    
             # Log the splitting info
-            
             sInfo.log(logger)
             
             # Build Tree from the feature with the optimal index
@@ -214,11 +228,11 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             sInfo = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
             logger.info("Received the Splitting Info from the active party")   
 
+        # Set the optimal split as the owner ID of the current tree node
+        currentNode.owner = sInfo.bestSplitParty
+        
         # Get the optimal splitting candidates and partition them into two databases
         if(sInfo.bestSplittingVector is not None):
-            # Set the optimal split as the owner ID of the current tree node
-            currentNode.owner = sInfo.bestSplitParty
-
             lD, rD = qDataBase.partition(sInfo.bestSplittingVector)
             logger.info("")
             logger.info("Database is partitioned into two quantiled databases!")
@@ -228,19 +242,22 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
             maxDepth = 3
             # Construct the new tree if the gain is positive
-            #if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
-            if (depth <= maxDepth):
+            if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
+            #if (depth <= maxDepth):
                 depth += 1
+                currentNode.leftBranch = FLTreeNode()
+                currentNode.rightBranch = FLTreeNode()
+
                 currentNode.leftBranch = self.grow(lD, depth,NodeDirection = TreeNodeType.LEFT, currentNode=currentNode.leftBranch)
                 currentNode.rightBranch = self.grow(rD, depth, NodeDirection = TreeNodeType.RIGHT, currentNode=currentNode.rightBranch)
             else:
                 leafNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
 
-                logger.warning("Reached max-depth. Terminate the tree growing process ...")
+                logger.warning("Reached max-depth or Gain is negative. Terminate the tree growing process ...")
                 logger.debug("Leaf Weight: %f", leafNode.weight)
                 return leafNode
         else:
-            logger.warning("Gain is negative. Terminate the tree growing process ...")
+            logger.warning("Splitting candidate is not feasible. Terminate the tree growing process and generate leaf ...")
             leafNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
             logger.debug("Leaf Weight: %f", leafNode.weight)
             return leafNode
