@@ -4,6 +4,7 @@ import random
 from tkinter import N
 from gpg import Data
 from numpy import concatenate
+from TreeRender import FLVisNode
 from VerticalXGBoost import *
 from SSCalculation import *
 import matplotlib.pyplot as plt
@@ -153,6 +154,9 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 treeInfo = self.root.get_string_recursive()
                 logger.info("Tree Info:\n%s", treeInfo)
                 print(treeInfo)
+            
+                b = FLVisNode(self.root)
+                b.display(treeID)
 
     def generate_leaf(self, gVec, hVec, lamb = 0.1):
         gI = sum(gVec) 
@@ -441,6 +445,9 @@ def test():
 
     model.boost()
     
+    # b = FLVisNode(model.trees)
+    # b.display()
+
     if rank == 1:
         y_pred = model.predict(X_test_A)
     elif rank == 2:
@@ -466,10 +473,13 @@ def test():
 
 
 
+
+
 from VerticalXGBoost import main2
 
 def main4():
-    data = pd.read_csv('./GiveMeSomeCredit/cs-training.csv')
+    #data = pd.read_csv('./GiveMeSomeCredit/cs-training.csv')
+    data = pd.read_csv('./GiveMeSomeCredit/cs-training-small.csv')
     data.dropna(inplace=True)
     data = data[['SeriousDlqin2yrs',
        'RevolvingUtilizationOfUnsecuredLines', 'age',
@@ -560,8 +570,10 @@ def main4():
 
 
 try:
-    #test()
-    main4()
+    test()
+   # main4()
+
+    
 
 except Exception as e:
   logging.error("Exception occurred", exc_info=True)
