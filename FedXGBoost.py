@@ -153,7 +153,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             if((rank == 1)):
                 treeInfo = self.root.get_string_recursive()
                 logger.info("Tree Info:\n%s", treeInfo)
-                print(treeInfo)
+                #print(treeInfo)
             
                 b = FLVisNode(self.root)
                 b.display(treeID)
@@ -279,18 +279,52 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             #return leafNode
               
 
-    # def predict(self, data): # Encapsulated for many data
-    #     data_num = data.shape[0]
-    #     result = []
-    #     for i in range(data_num):
-    #         temp_result = self.classify(self.Tree, data[i].reshape(1, -1))
-    #         if self.rank == 1:
-    #             result.append(temp_result)
-    #         else:
-    #             pass
-    #     result = np.array(result).reshape((-1, 1))
-    #     return result
+    def predict(self, data): # Encapsulated for many data
+        #result = super().predict(data)
 
+        data_num = data.shape[0]
+        result = []
+        for i in range(data_num):
+            temp_result = self.classify(self.Tree, data[i].reshape(1, -1))
+            if self.rank == 1:
+                result.append(temp_result)
+            else:
+                pass
+        result = np.array(result).reshape((-1, 1))
+
+        #print(result)
+        return result
+
+    def classify(self, tree, data):
+        #print(data.shape)
+
+        idx_list = []
+        shared_idx = None
+        final_result = 0
+        if self.rank != 0:
+            idx, result = self.getInfo(tree, data)
+        
+            print(idx)
+
+        # for i in range(1, clientNum + 1):
+        #     if self.rank == i:
+        #         shared_idx = self.split.SSSplit(idx, clientNum)
+        #         temp = np.zeros_like(shared_idx[0])
+        #         temp = np.expand_dims(temp, axis=0)
+        #         shared_idx = np.concatenate([temp, shared_idx], axis=0)
+        #     shared_idx = comm.scatter(shared_idx, root=i)
+        #     idx_list.append(shared_idx)
+
+        # final_idx = idx_list[0]
+        # for i in range(1, clientNum):
+        #     final_idx = self.split.SMUL(final_idx, idx_list[i], self.rank)
+        # if self.rank == 0:
+        #     result = np.zeros_like(final_idx)
+        # temp_result = np.sum(self.split.SMUL(final_idx, result, self.rank))
+        # temp_result = comm.gather(temp_result, root=1)
+        # if self.rank == 1:
+        #     final_result = np.sum(temp_result[1:])
+        return super().classify(tree, data)
 
 class FedXGBoostClassifier(VerticalXGBoostClassifier):
     def __init__(self, rank, lossfunc, splitclass, _lambda=1, _gamma=0.5, _epsilon=0.1, n_estimators=3, max_depth=3):
