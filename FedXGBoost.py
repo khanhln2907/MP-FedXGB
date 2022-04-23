@@ -1,3 +1,4 @@
+from curses.ascii import SI
 from posixpath import split
 import random
 from tkinter import N
@@ -78,6 +79,8 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
     def __init__(self, rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum):
         super().__init__(rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum)
 
+        self.root = FLTreeNode()
+
     def fitDepr(self, y_and_pred, tree_num, xData, sQuantile):
         super().fit(y_and_pred, tree_num)
 
@@ -142,14 +145,22 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             qDataBase.appendGradientsHessian(dummyG, dummyH)
 
         if(rank != 0):
-            self.grow(qDataBase, depth = 0, NodeDirection = TreeNodeType.ROOT)
+            rootNode = FLTreeNode()
+            self.grow(qDataBase, depth = 0, NodeDirection = TreeNodeType.ROOT, currentNode = rootNode)
+            self.root = rootNode
+
+            if(treeID == 0 and (rank == 1)):
+                treeInfo = self.root.get_string_recursive()
+                logger.info("Tree Info:\n%s", treeInfo)
+                print(treeInfo)
 
     def generate_leaf(self, gVec, hVec, lamb = 0.1):
         gI = sum(gVec) 
         hI = sum(hVec)
-        return -1.0 * gI / (hI + lamb) 
+        ret = TreeNode(-1.0 * gI / (hI + lamb), leftBranch= None, rightBranch= None)
+        return ret
 
-    def grow(self, qDataBase: QuantiledDataBase, depth=0, NodeDirection = TreeNodeType.ROOT):
+    def grow(self, qDataBase: QuantiledDataBase, depth=0, NodeDirection = TreeNodeType.ROOT, currentNode : FLTreeNode = None):
         logger.info("Tree is growing depth-wise. Current depth: {}".format(depth) + " Node's type: {}".format(NodeDirection))
 
         if self.rank == PARTY_ID.ACTIVE_PARTY:
@@ -205,6 +216,9 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         # Get the optimal splitting candidates and partition them into two databases
         if(sInfo.bestSplittingVector is not None):
+            # Set the optimal split as the owner ID of the current tree node
+            currentNode.owner = sInfo.bestSplitParty
+
             lD, rD = qDataBase.partition(sInfo.bestSplittingVector)
             logger.info("")
             logger.info("Database is partitioned into two quantiled databases!")
@@ -214,22 +228,35 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
             maxDepth = 3
             # Construct the new tree if the gain is positive
-            if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
+            #if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
+            if (depth <= maxDepth):
                 depth += 1
-                lB = self.grow(lD, depth,NodeDirection = TreeNodeType.LEFT)
-                rB = self.grow(rD, depth, NodeDirection = TreeNodeType.RIGHT)
+                currentNode.leftBranch = self.grow(lD, depth,NodeDirection = TreeNodeType.LEFT, currentNode=currentNode.leftBranch)
+                currentNode.rightBranch = self.grow(rD, depth, NodeDirection = TreeNodeType.RIGHT, currentNode=currentNode.rightBranch)
             else:
-                w = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
+                leafNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
 
                 logger.warning("Reached max-depth. Terminate the tree growing process ...")
-                logger.debug("Leaf Weight: %f", w)
-                return w
+                logger.debug("Leaf Weight: %f", leafNode.weight)
+                return leafNode
         else:
             logger.warning("Gain is negative. Terminate the tree growing process ...")
-            w = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
-            logger.debug("Leaf Weight: %f", w)
-            return w
+            leafNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
+            logger.debug("Leaf Weight: %f", leafNode.weight)
+            return leafNode
               
+
+    # def predict(self, data): # Encapsulated for many data
+    #     data_num = data.shape[0]
+    #     result = []
+    #     for i in range(data_num):
+    #         temp_result = self.classify(self.Tree, data[i].reshape(1, -1))
+    #         if self.rank == 1:
+    #             result.append(temp_result)
+    #         else:
+    #             pass
+    #     result = np.array(result).reshape((-1, 1))
+    #     return result
 
 
 class FedXGBoostClassifier(VerticalXGBoostClassifier):
@@ -355,11 +382,11 @@ def test():
                       np.concatenate((zero_data[train_size_zero:, -1].reshape(-1, 1), one_data[train_size_one:, -1].reshape(-1, 1)), 0)
 
     X_train_A = X_train[:, 0].reshape(-1, 1)
-    X_train_B = X_train[:, 1:4]
+    X_train_B = X_train[:, 2].reshape(-1, 1)
     X_train_C = X_train[:, 1].reshape(-1, 1)
     X_train_D = X_train[:, 3].reshape(-1, 1)
     X_test_A = X_test[:, 0].reshape(-1, 1)
-    X_test_B = X_test[:, 1:4]
+    X_test_B = X_test[:, 2].reshape(-1, 1)
     X_test_C = X_test[:, 1].reshape(-1, 1)
     X_test_D = X_test[:, 3].reshape(-1, 1)
     splitclass = SSCalculate()

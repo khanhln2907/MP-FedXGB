@@ -6,7 +6,7 @@ from Common import logger,rank
 
 
 class QuantileParam:
-    epsilon = 0.2
+    epsilon = 0.001
 
 class FeatureData:
     def __init__(self, name, dataVector) -> None:

@@ -21,6 +21,23 @@ class TreeNodeType:
     ROOT = "Root"
     LEFT = "Left"
     RIGHT = "Right"
+    LEAF = "Leaf"
+
+class TreeEntity:
+    def __init__(self) -> None:
+        pass
+
+
+class TreeNode(TreeEntity):
+    def __init__(self) -> None:
+        self.weight = 0
+        self.leftBranch = None
+        self.rightBranch = None
+
+# class TreeLeaf(TreeEntity):
+#     def __init__(self) -> None:
+#         self.weight = 0
+
 
 
 # class PARTY_ID:
