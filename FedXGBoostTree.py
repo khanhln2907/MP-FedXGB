@@ -95,13 +95,13 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             self.grow(qDataBase, depth = 0, NodeDirection = TreeNodeType.ROOT, currentNode = rootNode)
             self.root = rootNode
 
-            if((rank == 1)):
-                treeInfo = self.root.get_string_recursive()
-                logger.info("Tree Info:\n%s", treeInfo)
-                #print(treeInfo)
-            
-                b = FLVisNode(self.root)
-                b.display(treeID)
+            #if((rank == 1)):
+            treeInfo = self.root.get_string_recursive()
+            logger.info("Tree Info:\n%s", treeInfo)
+            #print(treeInfo)
+        
+            b = FLVisNode(self.root)
+            b.display(treeID)
 
     def generate_leaf(self, gVec, hVec, lamb = 0.1):
         gI = sum(gVec) 
@@ -156,8 +156,8 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 if (maxScore > sInfo.bestSplitScore):
                     sInfo.bestSplitScore = maxScore
                     sInfo.bestSplitParty = partners
-                    bestCandidateIndex = bestSplitId
-                    sInfo.bestSplittingVector = rxSM[bestCandidateIndex, :]
+                    sInfo.selectedCandidate = bestSplitId
+                    sInfo.bestSplittingVector = rxSM[bestSplitId, :]
                     
             # Log the splitting info
             sInfo.log(logger)
@@ -183,7 +183,15 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             logger.info("Received the Splitting Info from the active party")   
 
         # Set the optimal split as the owner ID of the current tree node
-        currentNode.owner = sInfo.bestSplitParty
+        # If the selected party is me
+        if(rank == sInfo.bestSplitParty):
+            feature, value = qDataBase.find_fId_and_scId(sInfo.bestSplittingVector)
+            sInfo.featureName = feature
+            sInfo.splitValue = value
+            currentNode.set_splitting_info(sInfo)
+        else:
+            currentNode.set_splitting_info(sInfo)
+        
         logger.info("Optimal splitting: %s", str(sInfo.bestSplittingVector))
 
         # Get the optimal splitting candidates and partition them into two databases
@@ -210,16 +218,16 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 logger.info("Live Tree Info at depth %d:\n%s", depth, tmpInfo)
 
             else:
-                terNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
-                currentNode.weight = terNode.weight
+                endNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
+                currentNode.weight = endNode.weight
 
                 logger.warning("Reached max-depth or Gain is negative. Terminate the tree growing process ...")
                 logger.info("Leaf Weight: %f", currentNode.weight)
                 #return leafNode
         else:
             logger.warning("Splitting candidate is not feasible. Terminate the tree growing process and generate leaf ...")
-            terNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
-            currentNode.weight = terNode.weight
+            endNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
+            currentNode.weight = endNode.weight
             logger.info("Leaf Weight: %f", currentNode.weight)
             #return leafNode
               
@@ -243,12 +251,52 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         result = np.array(result).reshape((-1, 1))
 
         ## Khanh goes from here
-        print(data.size)
+        if rank != 0:
+            
+            nUsers = data.shape[0]
+            for i in range(nUsers):
+                #self.classify_fed(i, data[i])
         
-
+                pass
 
         #print(result)
         return result
+
+    def classify_fed(self, userId, data):
+        """
+        This method performs the secured federated inferrence
+        """
+
+        logger.info("Classifying data of user %d. Data: %s", userId, str(data))
+
+        if rank is PARTY_ID.ACTIVE_PARTY:
+            curNode = self.root
+            #while(curNode.leftBranch)
+            # Iterate until we find the right leaf node
+            depth = 0
+            while(not curNode.is_leaf()):
+                
+                # Federate finding the direction for the next node
+                partnerID = curNode.owner
+                # Request the direction from the partner
+                txRecordID = comm.send(depth, dest = curNode.owner, tag = MSG_ID.REQUEST_DIRECTION)
+                logger.info("Sent the splitting matrix to the active party")
+
+
+                curNode = curNode.rightBranch
+
+            
+            #print("Leaf weight", curNode.weight)
+            selParty = self.root.owner
+
+
+
+            pass
+        elif rank != 0:
+            pass
+
+
+
 
     def classify(self, tree, data):
         #print(data.shape)

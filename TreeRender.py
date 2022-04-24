@@ -5,13 +5,14 @@ https://stackoverflow.com/questions/34012886/print-binary-tree-level-by-level-in
 from TreeStructure import TreeNode, FLTreeNode
 from Common import logger
 
-class FLVisNode(FLTreeNode):
+class FLVisNode():
     def __init__(self, FLnode: FLTreeNode):
         self.key = FLnode.owner
         self.weight = FLnode.weight
         self.right = FLVisNode(FLnode.rightBranch) if(FLnode.rightBranch is not None) else None
         self.left = FLVisNode(FLnode.leftBranch) if(FLnode.leftBranch is not None) else None
-    
+        self.splittingInfo = FLnode.splittingInfo
+
     def display(self, treeID):
         lines, *_ = self._display_aux()
         logger.info("Structure of tree %d", treeID)
@@ -52,7 +53,9 @@ class FLVisNode(FLTreeNode):
         # Two children.
         left, n, p, x = self.left._display_aux()
         right, m, q, y = self.right._display_aux()
-        s = '%s' % self.key
+        #s = '%s' % self.key
+        #print(self.splittingInfo.selectedFeatureID)
+        s = self.splittingInfo.get_str_split_info()
         u = len(s)
         first_line = (x + 1) * ' ' + (n - x - 1) * '_' + s + y * '_' + (m - y) * ' '
         second_line = x * ' ' + '/' + (n - x - 1 + u + y) * ' ' + '\\' + (m - y - 1) * ' '

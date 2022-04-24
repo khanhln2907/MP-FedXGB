@@ -1,3 +1,4 @@
+from matplotlib.pyplot import sca
 import numpy as np
 import pandas as pd
 from scipy import rand
@@ -142,6 +143,18 @@ class QuantiledDataBase(DataBase):
             else:
                 retMergedSM = np.concatenate((retMergedSM,fSM))  
         return retMergedSM
+
+    def find_fId_and_scId(self, bestSplitVector):
+        """
+        Find the optimal splitting feature and threshold corressponding to the optimal splitting vector
+        """
+        for key, feature in self.featureDict.items():
+            fSM, scArr = self.featureDict[key].get_splitting_info()
+            for v, s in zip(fSM, scArr):
+                if(np.all(v == bestSplitVector)):
+                    return key, s
+
+        assert(False)
 
     def partition(self, splittingVector):
         """
