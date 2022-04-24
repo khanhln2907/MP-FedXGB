@@ -34,6 +34,29 @@ class TreeNode(TreeEntity):
         self.leftBranch = None
         self.rightBranch = None
 
+
+class PARTY_ID:
+    ACTIVE_PARTY = 1
+
+
+class MSG_ID:
+    MASKED_GH = 99
+    RAW_SPLITTING_MATRIX = 98
+    OPTIMAL_SPLITTING_INFO = 97
+
+class SplittingInfo:
+    def __init__(self) -> None:
+        self.bestSplitScore = -np.Infinity
+        self.bestSplitParty = None
+        self.bestSplittingVector = None
+
+    def log(self, logger):
+        logger.info("Best Splitting Score: L = %.2f, Selected Party %s",\
+                self.bestSplitScore, str(self.bestSplitParty))
+        logger.debug("The optimal splitting vector: %s", str(self.bestSplittingVector))
+
+
+
 # class TreeLeaf(TreeEntity):
 #     def __init__(self) -> None:
 #         self.weight = 0
