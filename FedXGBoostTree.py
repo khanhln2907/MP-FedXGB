@@ -96,14 +96,15 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             self.root = rootNode
 
             #if((rank == 1)):
-            treeInfo = self.root.get_string_recursive()
-            logger.info("Tree Info:\n%s", treeInfo)
+            #treeInfo = self.root.get_string_recursive()
+            #logger.info("Tree Info:\n%s", treeInfo)
             #print(treeInfo)
-        
+            
+            # Display the tree in the log file
             b = FLVisNode(self.root)
             b.display(treeID)
 
-    def generate_leaf(self, gVec, hVec, lamb = 0.1):
+    def generate_leaf(self, gVec, hVec, lamb = 0.01):
         gI = sum(gVec) 
         hI = sum(hVec)
         ret = TreeNode(-1.0 * gI / (hI + lamb), leftBranch= None, rightBranch= None)
@@ -189,6 +190,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             sInfo.featureName = feature
             sInfo.splitValue = value
             currentNode.set_splitting_info(sInfo)
+            sInfo.log(logger)
 
             # Remove the feature for the next iteration because this is already used
             #qDataBase.remove_feature(feature)
@@ -198,28 +200,25 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         logger.info("Optimal splitting: %s", str(sInfo.bestSplittingVector))
 
         # Get the optimal splitting candidates and partition them into two databases
-        if(sInfo.bestSplittingVector is not None):
-            lD, rD = qDataBase.partition(sInfo.bestSplittingVector)
-            logger.info("")
-            logger.info("Database is partitioned into two quantiled databases!")
-            logger.info("Original database: %s", qDataBase.get_info_string())
-            logger.info("Left splitted database: %s", lD.get_info_string())
-            logger.info("Right splitted database: %s \n", rD.get_info_string())
-
+        if(sInfo.bestSplittingVector is not None):      
             maxDepth = 3
             # Construct the new tree if the gain is positive
             if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
-            #if (depth <= maxDepth):
                 depth += 1
+                lD, rD = qDataBase.partition(sInfo.bestSplittingVector)
+                logger.info("Growing to the next depth %d ...", depth)
+                logger.info("Database is partitioned into two quantiled databases!")
+                logger.info("Original database: %s", qDataBase.get_info_string())
+                logger.info("Left splitted database: %s", lD.get_info_string())
+                logger.info("Right splitted database: %s \n", rD.get_info_string())
+
                 currentNode.leftBranch = FLTreeNode()
                 currentNode.rightBranch = FLTreeNode()
 
+                # grow recursively
                 self.grow(lD, depth,NodeDirection = TreeNodeType.LEFT, currentNode=currentNode.leftBranch)
                 self.grow(rD, depth, NodeDirection = TreeNodeType.RIGHT, currentNode=currentNode.rightBranch)
             
-                tmpInfo = currentNode.get_string_recursive()
-                logger.info("Live Tree Info at depth %d:\n%s", depth, tmpInfo)
-
             else:
                 endNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
                 currentNode.weight = endNode.weight

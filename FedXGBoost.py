@@ -39,11 +39,9 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
         -   name        mx1: <m> strings
         """
         # TODO: This is just for now to let the code run
-        tmp = dataTable.copy()
-        self.data = tmp[:,:-1]
-        data_num = self.data.shape[0]
-        y = dataTable[:, -1]
-        self.label = np.reshape(y, (data_num, 1))
+        self.data = dataTable.copy()
+        #y = dataTable[:, -1]
+        #self.label = np.reshape(y, (data_num, 1))
         self.getAllQuantile()
         
         # Implementing the database
@@ -57,6 +55,10 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
             self.dataBase.append_feature(FeatureData(featureName[i], dataTable[:,i]))
 
         logger.warning('Appended data')
+
+
+    def append_label(self, labelVec):
+        self.label = np.reshape(labelVec, (len(labelVec), 1))
 
 
     def print_info(self):

@@ -60,8 +60,10 @@ class SplittingInfo:
     def log(self, logger):
         logger.info("Best Splitting Score: L = %.2f, Selected Party %s",\
                 self.bestSplitScore, str(self.bestSplitParty))
+        logger.info("%s", self.get_str_split_info())
         logger.debug("The optimal splitting vector: %s| Feature ID: %s| Candidate ID: %s",\
             str(self.bestSplittingVector), str(self.selectedFeatureID), str(self.selectedCandidate))
+
 
     def get_str_split_info(self):
         """

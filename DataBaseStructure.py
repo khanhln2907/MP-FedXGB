@@ -132,12 +132,10 @@ class QuantiledDataBase(DataBase):
         self.hessVec = []
 
     def get_info_string(self):
-        Str = "nUsers: %d nFeature: %d" % (self.nUsers, len(self.featureDict.items()))
-        logger.info("nUsers: %d nFeature: %d", self.nUsers, len(self.featureDict.items()))
+        Str = "nUsers: %d nFeature: %d \n" % (self.nUsers, len(self.featureDict.items()))
         for key, feature in self.featureDict.items():
             sm, sc = self.featureDict[key].get_splitting_info()
-            logger.info("{} splitting candidates of feature {}".format(str(len(sc)), key) + " [{}]".format(' '.join(map(str, sc))))
-            Str += "{} splitting candidates of feature {}".format(str(len(sc)), key) + " [{}]".format(' '.join(map(str, sc)))
+            Str += "{} splitting candidates of feature {}: ".format(str(len(sc)), key) + " [{}] \n".format(' '.join(map(str, sc)))
         return Str
 
     def get_merged_splitting_matrix(self):
