@@ -35,18 +35,18 @@ def test():
     if rank == 1:
         #print("Test A", len(X_train_A), len(X_train_A[0]), len(y_train), len(y_train[0]))
         #print("Test A", X_train_A.shape[0], len(X_train_A[0]), len(y_train), len(y_train[0]))
-        model.appendData(np.concatenate((X_train_A, y_train), 1))
+        model.append_data(np.concatenate((X_train_A, y_train), 1))
     elif rank == 2:
         #print("Test", len(X_train_B), len(X_train_B[0]), len(y_train), len(y_train[0]))
-        model.appendData(np.concatenate((X_train_B, y_train), 1))
+        model.append_data(np.concatenate((X_train_B, y_train), 1))
     elif rank == 3:
-        model.appendData(np.concatenate((X_train_C, y_train), 1))
+        model.append_data(np.concatenate((X_train_C, y_train), 1))
     elif rank == 4:
-        model.appendData(np.concatenate((X_train_D, y_train), 1))
+        model.append_data(np.concatenate((X_train_D, y_train), 1))
     else:
-        model.appendData(np.concatenate((X_train_A, y_train), 1))
+        model.append_data(np.concatenate((X_train_A, y_train), 1))
 
-    model.printInfo()
+    model.print_info()
 
 
     model.boost()
@@ -135,18 +135,18 @@ def main4():
     if rank == 1:
         #print("Test A", len(X_train_A), len(X_train_A[0]), len(y_train), len(y_train[0]))
         #print("Test A", X_train_A.shape[0], len(X_train_A[0]), len(y_train), len(y_train[0]))
-        model.appendData(np.concatenate((X_train_A, y_train), 1))
+        model.append_data(np.concatenate((X_train_A, y_train), 1))
     elif rank == 2:
         #print("Test", len(X_train_B), len(X_train_B[0]), len(y_train), len(y_train[0]))
-        model.appendData(np.concatenate((X_train_B, y_train), 1))
+        model.append_data(np.concatenate((X_train_B, y_train), 1))
     elif rank == 3:
-        model.appendData(np.concatenate((X_train_C, y_train), 1))
+        model.append_data(np.concatenate((X_train_C, y_train), 1))
     elif rank == 4:
-        model.appendData(np.concatenate((X_train_D, y_train), 1))
+        model.append_data(np.concatenate((X_train_D, y_train), 1))
     else:
-        model.appendData(np.concatenate((X_train_A, y_train), 1))
+        model.append_data(np.concatenate((X_train_A, y_train), 1))
 
-    model.printInfo()
+    model.print_info()
 
 
     model.boost()

@@ -32,7 +32,7 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
         self.label = []
         self.dataBase = DataBase()
 
-    def appendData(self, dataTable, featureName = None):
+    def append_data(self, dataTable, featureName = None):
         """
         Dimension definition: 
         -   dataTable   nxm: <n> users & <m> features
@@ -54,14 +54,14 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
         assert (len(featureName) is nFeatures) # The total amount of columns must match the assigned name 
         
         for i in range(len(featureName)):
-            self.dataBase.appendFeature(FeatureData(featureName[i], dataTable[:,i]))
+            self.dataBase.append_feature(FeatureData(featureName[i], dataTable[:,i]))
 
         logger.warning('Appended data')
 
 
-    def printInfo(self):
+    def print_info(self):
         featureListStr = '' 
-        self.dataBase.printInfo()
+        self.dataBase.print_info()
 
     def boostDepr(self):
         data_num = self.data.shape[0]
@@ -92,7 +92,7 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
     def boost(self):
         # TODO: the data is passed in the method append data
         data_num = self.data.shape[0]
-        X = self.dataBase.getDataMatrix()
+        X = self.dataBase.get_data_matrix()
         if(rank == 2):
             print("data ", np.shape(self.data))
             print("X ", np.shape(X))

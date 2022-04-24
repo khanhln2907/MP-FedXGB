@@ -189,6 +189,9 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             sInfo.featureName = feature
             sInfo.splitValue = value
             currentNode.set_splitting_info(sInfo)
+
+            # Remove the feature for the next iteration because this is already used
+            #qDataBase.remove_feature(feature)
         else:
             currentNode.set_splitting_info(sInfo)
         

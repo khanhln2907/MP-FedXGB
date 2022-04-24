@@ -96,20 +96,26 @@ class DataBase:
         self.nUsers = 0
 
 
-    def appendFeature(self, featureData: FeatureData):
+    def append_feature(self, featureData: FeatureData):
         #self.featureData.append(featureData)
         self.featureDict[featureData.name] = featureData.data
         self.nUsers = len(featureData.data)
 
-    def printInfo(self):
+    def remove_feature(self, key):
+        """
+        Users must ensure that the key exists
+        """
+        del self.featureDict[key]
+
+    def print_info(self):
         fNameList = ''
         for fName, fData in self.featureDict.items():
             fNameList += fName + '; '
         #print("Existing Feature: ", fNameList)
-        #print(self.getDataMatrix())
+        #print(self.get_data_matrix())
 
     
-    def getDataMatrix(self, nameFeature = None):
+    def get_data_matrix(self, nameFeature = None):
         X = pd.DataFrame(self.featureDict).values
         return X
 
@@ -156,6 +162,7 @@ class QuantiledDataBase(DataBase):
 
         assert(False)
 
+
     def partition(self, splittingVector):
         """
         Partition the database to two left and right databases according to the spliitng vector
@@ -169,8 +176,8 @@ class QuantiledDataBase(DataBase):
             leftDictData = self.featureDict[feature].data[splittingVector == 0]
             rightDictData = self.featureDict[feature].data[splittingVector == 1]
             
-            retL.appendFeature(FeatureData(feature, leftDictData))
-            retR.appendFeature(FeatureData(feature, rightDictData))
+            retL.append_feature(FeatureData(feature, leftDictData))
+            retR.append_feature(FeatureData(feature, rightDictData))
         
         retL = QuantiledDataBase(retL)
         retL.appendGradientsHessian(self.gradVec[splittingVector == 0], self.hessVec[splittingVector == 0])
