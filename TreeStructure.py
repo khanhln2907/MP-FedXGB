@@ -34,8 +34,9 @@ class TreeNode:
         return (self.leftBranch is None) and (self.rightBranch is None)
 
 class FLTreeNode(TreeNode):
-    def __init__(self, weight=0, nUsers = 0, leftBranch=None, rightBranch=None, ownerID = -1):
+    def __init__(self, FID = 0, weight=0, nUsers = 0, leftBranch=None, rightBranch=None, ownerID = -1):
         super().__init__(weight, leftBranch, rightBranch)
+        self.FID = FID
         self.owner = ownerID
         self.splittingInfo = SplittingInfo()
         self.nUsers = nUsers

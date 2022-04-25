@@ -26,6 +26,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         super().__init__(rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum)
 
         self.root = FLTreeNode()
+        self.nNode = 0
 
     def fitDepr(self, y_and_pred, tree_num, xData, sQuantile):
         super().fit(y_and_pred, tree_num)
@@ -114,11 +115,16 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         logger.info("Tree is growing depth-wise. Current depth: {}".format(depth) + " Node's type: {}".format(NodeDirection))
         currentNode.nUsers = qDataBase.nUsers
 
+        # Assign the unique fed tree id for each node
+        currentNode.FID = self.nNode
+        self.nNode += 1
+
+        # Start finding the optimal candidate federatedly
+        # TODO: write a generic method because this part depends on the secure protocol        
         if self.rank == PARTY_ID.ACTIVE_PARTY:
             sInfo = SplittingInfo()
             nprocs = comm.Get_size()
             # Collect all private splitting info from the partners to find the optimal splitting candidates
-            # TODO: write a generic method because this part depends on the secure protocol        
             for partners in range(2, nprocs):   
                 rxSM = comm.recv(source = partners, tag = MSG_ID.RAW_SPLITTING_MATRIX)
 
@@ -189,9 +195,6 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             sInfo.featureName = feature
             sInfo.splitValue = value
             currentNode.set_splitting_info(sInfo)
-
-            # Remove the feature for the next iteration because this is already used
-            qDataBase.remove_feature(feature) # TODO: Implement a generic method to update the database before going into the next depth
         else:
             currentNode.set_splitting_info(sInfo)
         
@@ -229,6 +232,10 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             logger.warning("Splitting candidate is not feasible. Terminate the tree growing,\
                     generate the leaf with weight Leaf Weight: %f", currentNode.weight)
             
+        # Post processing
+        # Remove the feature for the next iteration because this is already used
+        if(rank == sInfo.bestSplitParty):
+            qDataBase.remove_feature(feature) # TODO: Implement a generic method to update the database before going into the next depth
               
 
     def predict_fed(self, data): # Encapsulated for many data
