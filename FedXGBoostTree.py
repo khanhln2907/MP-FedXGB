@@ -116,7 +116,9 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         if self.rank == PARTY_ID.ACTIVE_PARTY:
             sInfo = SplittingInfo()
-            nprocs = comm.Get_size()        
+            nprocs = comm.Get_size()
+            # Collect all private splitting info from the partners to find the optimal splitting candidates
+            # TODO: write a generic method because this part depends on the secure protocol        
             for partners in range(2, nprocs):   
                 rxSM = comm.recv(source = partners, tag = MSG_ID.RAW_SPLITTING_MATRIX)
 
@@ -148,8 +150,8 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                         if not isValid:
                             excId[id] = True
 
-                            
-                    tmpL = np.ma.array(L, mask=excId) # Mask the exception index to avoid strong bias between each node's users ratio
+                    # Mask the exception index to avoid strong imbalance between each node's users ratio     
+                    tmpL = np.ma.array(L, mask=excId) 
                     bestSplitId = np.argmax(tmpL)
                     splitVector = rxSM[bestSplitId, :]
                     maxScore = tmpL[bestSplitId]     
@@ -165,6 +167,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             for partners in range(2, nprocs):
                     data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
                     logger.info("Sent splitting info to clients {}".format(partners))
+
         elif (rank != 0):           
             # Perform the secure Sharing of the splitting matrix
             # qDataBase.printInfo()
@@ -188,7 +191,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             currentNode.set_splitting_info(sInfo)
 
             # Remove the feature for the next iteration because this is already used
-            qDataBase.remove_feature(feature)
+            qDataBase.remove_feature(feature) # TODO: Implement a generic method to update the database before going into the next depth
         else:
             currentNode.set_splitting_info(sInfo)
         
@@ -228,7 +231,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             
               
 
-    def predictTrain(self, data): # Encapsulated for many data
+    def predict_fed(self, data): # Encapsulated for many data
         """
         Data matrix has the same format as the data appended to the database, includes the features' values
         
@@ -248,7 +251,6 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         ## Khanh goes from here
         if rank != 0:
-            
             nUsers = data.shape[0]
             for i in range(nUsers):
                 #self.classify_fed(i, data[i])

@@ -118,7 +118,7 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
                 continue
             else:
                 #print("hello")
-                update_pred = self.trees[i].predictTrain(orgData)
+                update_pred = self.trees[i].predict_fed(orgData)
             if self.rank == 1:
                 update_pred = np.reshape(update_pred, (data_num, 1))
                 y_pred += update_pred

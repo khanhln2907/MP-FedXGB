@@ -215,10 +215,10 @@ def main4():
 
 
 try:
-    #test()
+    test()
     
     logger.setLevel(logging.INFO)
-    main4()
+    #main4()
 
     
 
