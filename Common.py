@@ -10,7 +10,7 @@ rank = comm.Get_rank()
 logger = logging.getLogger()
 logName = 'Log/FedXGBoost_%d.log' % rank
 file_handler = logging.FileHandler(logName, mode='w')
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)s] %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.setLevel(logging.DEBUG)
@@ -70,8 +70,16 @@ class SplittingInfo:
         
         """
         retStr = ''
-        #if(self.featureName is not None): # implies the private splitting info is set by the owner party
-        retStr += "[p: %s f: %s, s: %.2f]" % (str(self.bestSplitParty), str(self.featureName), (self.splitValue))
+        if(self.bestSplittingVector is not None):
+            retStr = "[P: %s, N = %s, " % (str(self.bestSplitParty), str(len(self.bestSplittingVector)))
+        else:
+            return "Infeasible splitting option. The tree growing should be terminated..."
+
+        
+        if(self.featureName is not None): # implies the private splitting info is set by the owner party
+            retStr += "F: %s, S: %.4f]" % (str(self.featureName), (self.splitValue))
+        else:
+            retStr += "F: Unknown, s: Unknown]" 
         return retStr
 
 # class TreeLeaf(TreeEntity):

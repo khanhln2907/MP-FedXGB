@@ -217,7 +217,7 @@ def main4():
 try:
     #test()
     
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     main4()
 
     

@@ -141,28 +141,25 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                     nL = np.count_nonzero(splitVector == 0.0)
                     nR = np.count_nonzero(splitVector == 1.0)
                     #print(len(splitVector), nR, nL)
-                    thres = 0.2
-                    isValid = ((nL/len(splitVector)) > thres) and ((nR/len(splitVector)) > thres)
-                    if isValid:
-                        pass
-                    else:
+                    thres = 0.1 # TODO: bring this value outside as parameters 
+                    isValid = (((nL/len(splitVector)) > thres) and ((nR/len(splitVector)) > thres))
+                    print(nL, nR, len(splitVector), isValid)
+                    if not isValid:
                         excId[id] = True
 
-                bestSplitId = 0
-                tmpL = np.ma.array(L, mask=excId) # Mask the exception index
+                        
+                tmpL = np.ma.array(L, mask=excId) # Mask the exception index to avoid strong bias between each node's users ratio
                 bestSplitId = np.argmax(tmpL)
                 splitVector = rxSM[bestSplitId, :]
-                maxScore = L[bestSplitId]     
+                maxScore = tmpL[bestSplitId]     
+
                 # Select the optimal over all partner parties
                 if (maxScore > sInfo.bestSplitScore):
                     sInfo.bestSplitScore = maxScore
                     sInfo.bestSplitParty = partners
                     sInfo.selectedCandidate = bestSplitId
                     sInfo.bestSplittingVector = rxSM[bestSplitId, :]
-                    
-            # Log the splitting info
-            sInfo.log(logger)
-            
+                                
             # Build Tree from the feature with the optimal index
             for partners in range(2, nprocs):
                     data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
@@ -171,17 +168,15 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             # Perform the secure Sharing of the splitting matrix
             # qDataBase.printInfo()
             privateSM = qDataBase.get_merged_splitting_matrix()
-            logger.debug("Secured splitting matrix with shape of {}".format(str(privateSM.shape)) \
-                            + "\n {}".format(' '.join(map(str, privateSM))))
-            logger.debug("Secured splitting matrix: \n %s", str(privateSM))
-
+            logger.info("Merged splitting options from all features and obtain the private splitting matrix with shape of {}".format(str(privateSM.shape)))
+            logger.debug("Value of the private splitting matrix is \n{}".format(str(privateSM))) 
 
             # Send the splitting matrix to the active party
             txSM = comm.send(privateSM, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RAW_SPLITTING_MATRIX)
-            logger.info("Sent the splitting matrix to the active party")         
+            logger.warning("Sent the splitting matrix to the active party")         
 
             sInfo = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
-            logger.info("Received the Splitting Info from the active party")   
+            logger.warning("Received the Splitting Info from the active party")   
 
         # Set the optimal split as the owner ID of the current tree node
         # If the selected party is me
@@ -190,14 +185,14 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             sInfo.featureName = feature
             sInfo.splitValue = value
             currentNode.set_splitting_info(sInfo)
-            sInfo.log(logger)
 
             # Remove the feature for the next iteration because this is already used
             #qDataBase.remove_feature(feature)
         else:
             currentNode.set_splitting_info(sInfo)
         
-        logger.info("Optimal splitting: %s", str(sInfo.bestSplittingVector))
+        sInfo.log(logger)
+        #logger.info("Optimal splitting: %s", str(sInfo.bestSplittingVector))
 
         # Get the optimal splitting candidates and partition them into two databases
         if(sInfo.bestSplittingVector is not None):      
@@ -206,11 +201,10 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             if (depth <= maxDepth) and (sInfo.bestSplitScore > 0):
                 depth += 1
                 lD, rD = qDataBase.partition(sInfo.bestSplittingVector)
-                logger.info("Growing to the next depth %d ...", depth)
-                logger.info("Database is partitioned into two quantiled databases!")
-                logger.info("Original database: %s", qDataBase.get_info_string())
-                logger.info("Left splitted database: %s", lD.get_info_string())
-                logger.info("Right splitted database: %s \n", rD.get_info_string())
+                logger.info("Growing to the next depth %d. Splitting database into two quantiled databases", depth)
+                logger.info("\nOriginal database: %s", qDataBase.get_info_string())
+                logger.info("\nLeft splitted database: %s", lD.get_info_string())
+                logger.info("\nRight splitted database: %s \n", rD.get_info_string())
 
                 currentNode.leftBranch = FLTreeNode()
                 currentNode.rightBranch = FLTreeNode()
@@ -223,15 +217,15 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 endNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
                 currentNode.weight = endNode.weight
 
-                logger.warning("Reached max-depth or Gain is negative. Terminate the tree growing process ...")
-                logger.info("Leaf Weight: %f", currentNode.weight)
-                #return leafNode
+                logger.warning("Reached max-depth or Gain is negative. Terminate the tree growing,\
+                     generate the leaf with weight Leaf Weight: %f", currentNode.weight)
         else:
-            logger.warning("Splitting candidate is not feasible. Terminate the tree growing process and generate leaf ...")
             endNode = self.generate_leaf(qDataBase.gradVec, qDataBase.hessVec, lamb = 0.2)
             currentNode.weight = endNode.weight
-            logger.info("Leaf Weight: %f", currentNode.weight)
-            #return leafNode
+
+            logger.warning("Splitting candidate is not feasible. Terminate the tree growing,\
+                    generate the leaf with weight Leaf Weight: %f", currentNode.weight)
+            
               
 
     def predictTrain(self, data): # Encapsulated for many data
