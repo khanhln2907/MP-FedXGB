@@ -12,6 +12,7 @@ class FLVisNode():
         self.right = FLVisNode(FLnode.rightBranch) if(FLnode.rightBranch is not None) else None
         self.left = FLVisNode(FLnode.leftBranch) if(FLnode.leftBranch is not None) else None
         self.splittingInfo = FLnode.splittingInfo
+        self.nUsers = FLnode.nUsers
 
     def display(self, treeID):
         lines, *_ = self._display_aux()
@@ -24,7 +25,7 @@ class FLVisNode():
         """Returns list of strings, width, height, and horizontal coordinate of the root."""
         # No child.
         if self.right is None and self.left is None:
-            line = '%.3f' % self.weight
+            line = '[N = %d: W = %.3f]' % (self.nUsers, self.weight)
             width = len(line)
             height = 1
             middle = width // 2

@@ -11,6 +11,7 @@ logger = logging.getLogger()
 logName = 'Log/FedXGBoost_%d.log' % rank
 file_handler = logging.FileHandler(logName, mode='w')
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)s] %(message)s')
+formatter = logging.Formatter('%(levelname)s - [%(filename)s:%(lineno)s - %(funcName)s] %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.setLevel(logging.DEBUG)

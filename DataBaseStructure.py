@@ -139,10 +139,10 @@ class QuantiledDataBase(DataBase):
         return Str
 
     def get_merged_splitting_matrix(self):
-        retMergedSM = None
+        retMergedSM = np.array([])
         for key, feature in self.featureDict.items():
             fSM, sc = self.featureDict[key].get_splitting_info()
-            if retMergedSM is None:
+            if not retMergedSM.size:
                 retMergedSM = fSM
             else:
                 retMergedSM = np.concatenate((retMergedSM,fSM))  

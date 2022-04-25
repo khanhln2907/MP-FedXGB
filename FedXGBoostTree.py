@@ -112,6 +112,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
     def grow(self, qDataBase: QuantiledDataBase, depth=0, NodeDirection = TreeNodeType.ROOT, currentNode : FLTreeNode = None):
         logger.info("Tree is growing depth-wise. Current depth: {}".format(depth) + " Node's type: {}".format(NodeDirection))
+        currentNode.nUsers = qDataBase.nUsers
 
         if self.rank == PARTY_ID.ACTIVE_PARTY:
             sInfo = SplittingInfo()
@@ -119,46 +120,46 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             for partners in range(2, nprocs):   
                 rxSM = comm.recv(source = partners, tag = MSG_ID.RAW_SPLITTING_MATRIX)
 
-                # Find the optimal splitting score
-                sumGRVec = np.matmul(rxSM, qDataBase.gradVec).reshape(-1)
-                sumHRVec = np.matmul(rxSM, qDataBase.hessVec).reshape(-1)
-                sumGLVec = sum(qDataBase.gradVec) - sumGRVec
-                sumHLVec = sum(qDataBase.hessVec) - sumHRVec
-                L = compute_splitting_score(rxSM, qDataBase.gradVec, qDataBase.hessVec, 0.01)
+                # Find the optimal splitting score iff the splitting matrix is provided
+                if rxSM.size:
+                    sumGRVec = np.matmul(rxSM, qDataBase.gradVec).reshape(-1)
+                    sumHRVec = np.matmul(rxSM, qDataBase.hessVec).reshape(-1)
+                    sumGLVec = sum(qDataBase.gradVec) - sumGRVec
+                    sumHLVec = sum(qDataBase.hessVec) - sumHRVec
+                    L = compute_splitting_score(rxSM, qDataBase.gradVec, qDataBase.hessVec, 0.01)
 
-                logger.debug("Received SM from party {} and computed:  \n".format(partners) + \
-                    "GR: " + str(sumGRVec.T) + "\n" + "HR: " + str(sumHRVec.T) +\
-                    "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T) +\
-                    "\nSplitting Score: {}".format(L.T))       
-                
-                # Optimal candidate of 1 partner party
-                # Select the optimal candidates without all zeros or one elements of the splitting)
-                isValid = False
-                excId = np.zeros(L.size, dtype=bool)
-                for id in range(len(L)):
-                    splitVector = rxSM[id, :]
+                    logger.debug("Received SM from party {} and computed:  \n".format(partners) + \
+                        "GR: " + str(sumGRVec.T) + "\n" + "HR: " + str(sumHRVec.T) +\
+                        "\nGL: " + str(sumGLVec.T) + "\n" + "HL: " + str(sumHLVec.T) +\
+                        "\nSplitting Score: {}".format(L.T))       
+                    
+                    # Optimal candidate of 1 partner party
+                    # Select the optimal candidates without all zeros or one elements of the splitting)
+                    isValid = False
+                    excId = np.zeros(L.size, dtype=bool)
+                    for id in range(len(L)):
+                        splitVector = rxSM[id, :]
 
-                    nL = np.count_nonzero(splitVector == 0.0)
-                    nR = np.count_nonzero(splitVector == 1.0)
-                    #print(len(splitVector), nR, nL)
-                    thres = 0.1 # TODO: bring this value outside as parameters 
-                    isValid = (((nL/len(splitVector)) > thres) and ((nR/len(splitVector)) > thres))
-                    print(nL, nR, len(splitVector), isValid)
-                    if not isValid:
-                        excId[id] = True
+                        nL = np.count_nonzero(splitVector == 0.0)
+                        nR = np.count_nonzero(splitVector == 1.0)
+                        thres = 0.1 # TODO: bring this value outside as parameters 
+                        isValid = (((nL/len(splitVector)) > thres) and ((nR/len(splitVector)) > thres))
+                        #print(nL, nR, len(splitVector), isValid)
+                        if not isValid:
+                            excId[id] = True
 
-                        
-                tmpL = np.ma.array(L, mask=excId) # Mask the exception index to avoid strong bias between each node's users ratio
-                bestSplitId = np.argmax(tmpL)
-                splitVector = rxSM[bestSplitId, :]
-                maxScore = tmpL[bestSplitId]     
+                            
+                    tmpL = np.ma.array(L, mask=excId) # Mask the exception index to avoid strong bias between each node's users ratio
+                    bestSplitId = np.argmax(tmpL)
+                    splitVector = rxSM[bestSplitId, :]
+                    maxScore = tmpL[bestSplitId]     
 
-                # Select the optimal over all partner parties
-                if (maxScore > sInfo.bestSplitScore):
-                    sInfo.bestSplitScore = maxScore
-                    sInfo.bestSplitParty = partners
-                    sInfo.selectedCandidate = bestSplitId
-                    sInfo.bestSplittingVector = rxSM[bestSplitId, :]
+                    # Select the optimal over all partner parties
+                    if (maxScore > sInfo.bestSplitScore):
+                        sInfo.bestSplitScore = maxScore
+                        sInfo.bestSplitParty = partners
+                        sInfo.selectedCandidate = bestSplitId
+                        sInfo.bestSplittingVector = rxSM[bestSplitId, :]
                                 
             # Build Tree from the feature with the optimal index
             for partners in range(2, nprocs):
@@ -187,12 +188,11 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             currentNode.set_splitting_info(sInfo)
 
             # Remove the feature for the next iteration because this is already used
-            #qDataBase.remove_feature(feature)
+            qDataBase.remove_feature(feature)
         else:
             currentNode.set_splitting_info(sInfo)
         
         sInfo.log(logger)
-        #logger.info("Optimal splitting: %s", str(sInfo.bestSplittingVector))
 
         # Get the optimal splitting candidates and partition them into two databases
         if(sInfo.bestSplittingVector is not None):      
