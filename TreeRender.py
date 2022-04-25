@@ -26,7 +26,7 @@ class FLVisNode():
         """Returns list of strings, width, height, and horizontal coordinate of the root."""
         # No child.
         if self.right is None and self.left is None:
-            line = 'FID: %d: ' % self.fid + '[N = %d: W = %.3f]' % (self.nUsers, self.weight)
+            line = 'FID: %d: ' % self.fid + '[N = %d: W = %s]' % (self.nUsers, str(self.weight))
             width = len(line)
             height = 1
             middle = width // 2

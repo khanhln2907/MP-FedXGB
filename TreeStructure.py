@@ -7,7 +7,7 @@ import time
 from Common import SplittingInfo, logger
 
 class TreeNode:
-    def __init__(self, weight = 0, leftBranch=None, rightBranch=None):
+    def __init__(self, weight = 0.0, leftBranch=None, rightBranch=None):
         self.weight = weight
         self.leftBranch = leftBranch
         self.rightBranch = rightBranch
@@ -48,8 +48,4 @@ class FLTreeNode(TreeNode):
         self.owner = sInfo.bestSplitParty
         self.splittingInfo = sInfo
 
-
-class TreeLeaf:
-    def __init__(self, weight) -> None:
-        self.weight = weight
-
+        

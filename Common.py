@@ -1,3 +1,4 @@
+from matplotlib import use
 import numpy as np
 from mpi4py import MPI
 import logging
@@ -46,6 +47,9 @@ class MSG_ID:
     OPTIMAL_SPLITTING_INFO = 97
 
     REQUEST_DIRECTION = 96
+    RESPONSE_DIRECTION = 95
+    INIT_INFERENCE_SIG = 89
+    ABORT_INFERENCE_SIG = 90
 
 class SplittingInfo:
     def __init__(self) -> None:
@@ -83,9 +87,28 @@ class SplittingInfo:
             retStr += "F: Unknown, s: Unknown]" 
         return retStr
 
-# class TreeLeaf(TreeEntity):
-#     def __init__(self) -> None:
-#         self.weight = 0
+
+class FedQueryInfo:
+    def __init__(self, userId = None) -> None:
+        self.userId = userId
+
+class FedDirRequestInfo(FedQueryInfo):
+    def __init__(self, userId) -> None:
+        super().__init__(userId)
+        self.nodeFedId = None
+        self.receiverId = None
+
+class Direction:
+    DEFAULT = None
+    LEFT = 0
+    RIGHT = 1
+
+class FedDirResponseInfo(FedQueryInfo):
+    def __init__(self, userId) -> None:
+        super().__init__(userId)
+        self.Direction = Direction.DEFAULT
+
+
 
 
 

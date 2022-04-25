@@ -1,5 +1,5 @@
 import numpy as np
-from Common import logger, rank, comm, PARTY_ID, MSG_ID, TreeNodeType, SplittingInfo
+from Common import Direction, FedDirRequestInfo, FedDirResponseInfo, logger, rank, comm, PARTY_ID, MSG_ID, TreeNodeType, SplittingInfo
 from VerticalXGBoost import VerticalXGBoostTree
 from TreeStructure import *
 from DataBaseStructure import *
@@ -171,8 +171,8 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                                 
             # Build Tree from the feature with the optimal index
             for partners in range(2, nprocs):
-                    data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
-                    logger.info("Sent splitting info to clients {}".format(partners))
+                data = comm.send(sInfo, dest = partners, tag = MSG_ID.OPTIMAL_SPLITTING_INFO)
+                logger.info("Sent splitting info to clients {}".format(partners))
 
         elif (rank != 0):           
             # Perform the secure Sharing of the splitting matrix
@@ -257,6 +257,9 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         result = np.array(result).reshape((-1, 1))
 
         ## Khanh goes from here
+
+        self.classify_fed(0, data[0])
+
         if rank != 0:
             nUsers = data.shape[0]
             for i in range(nUsers):
@@ -275,32 +278,109 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         logger.info("Classifying data of user %d. Data: %s", userId, str(data))
 
         if rank is PARTY_ID.ACTIVE_PARTY:
-            curNode = self.root
-            #while(curNode.leftBranch)
-            # Iterate until we find the right leaf node
-            depth = 0
-            while(not curNode.is_leaf()):
-                
-                # Federate finding the direction for the next node
-                partnerID = curNode.owner
-                # Request the direction from the partner
-                txRecordID = comm.send(depth, dest = curNode.owner, tag = MSG_ID.REQUEST_DIRECTION)
-                logger.info("Sent the splitting matrix to the active party")
-
-
-                curNode = curNode.rightBranch
+            # Initialize the inferrence process --> Mimic the clien service behaviour. TODO: use mpi4py standard?
+            nprocs = comm.Get_size()
+            req = FedDirRequestInfo(userId)
+            for partners in range(2, nprocs):
+                    data = comm.send(req, dest = partners, tag = MSG_ID.REQUEST_DIRECTION)
+                    logger.info("Sent the initial inference request to all partner party.")
 
             
-            #print("Leaf weight", curNode.weight)
-            selParty = self.root.owner
 
 
-
-            pass
         elif rank != 0:
-            pass
+            reqInfo = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
+            logger.warning("Received the inference request from the active party") 
+            logger.warning("Start performing federated inferring ...") 
+            # Parse the request
+            id = reqInfo.userId
+
+        for i in range(self.nNode):
+            curNode = self.root                
+
+            logger.warning("Finished federated inference!") 
 
 
+    def classify_fed_dpre(self, userId, data):
+        """
+        This method performs the secured federated inferrence
+        """
+
+        logger.info("Classifying data of user %d. Data: %s", userId, str(data))
+
+        if rank is PARTY_ID.ACTIVE_PARTY:
+            # Initialize the inferrence process --> Mimic the clien service behaviour. TODO: use mpi4py standard?
+            nprocs = comm.Get_size()
+            for partners in range(2, nprocs):
+                    data = comm.send(0, dest = partners, tag = MSG_ID.INIT_INFERENCE_SIG)
+                    logger.info("Sent the initial inference request to all partner party.")
+
+
+            curNode = self.root
+            # Iterate until we find the right leaf node  
+            while(not curNode.is_leaf()):                
+                # Federate finding the direction for the next node
+                req = FedDirRequestInfo(userId)
+                req.nodeFedId = curNode.FID
+                req.receiverId = curNode.owner
+
+                # Request the direction from the partner TODO: send to only the related partner?
+
+                tmp = np.ones([userId, req.receiverId, req.receiverId])
+                buffer = comm.sendrecv(sendobj=tmp, dest=curNode.owner, sendtag= MSG_ID.REQUEST_DIRECTION,
+                                        source=PARTY_ID.ACTIVE_PARTY, recvtag = MSG_ID.RESPONSE_DIRECTION)
+
+                for partners in range(2, nprocs):
+                    status = comm.send(tmp, dest = partners, tag = MSG_ID.REQUEST_DIRECTION)
+                logger.info("Sent the direction request to all partner party")
+                
+                # Receive the response
+                dirResp = comm.recv(source = curNode.owner, tag = MSG_ID.RESPONSE_DIRECTION)
+                logger.info("Received the direction response from party %d.", curNode.owner)
+
+                if(dirResp.Direction == Direction.LEFT):
+                    curNode =curNode.leftBranch
+                elif(dirResp.Direction == Direction.RIGHT):
+                    curNode = curNode.rightBranch
+
+                print("Check Leaf", curNode.is_leaf())
+
+            # Finish inference --> sending abort signal
+            for partners in range(2, nprocs):
+                status = comm.send(np.zeros([0]), dest = partners, tag = MSG_ID.ABORT_INFERENCE_SIG)
+            logger.info("Sent the abort inference request to all partner party.")
+
+
+        elif rank != 0:
+            info = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.INIT_INFERENCE_SIG)
+            logger.warning("Received the inference request from the active party") 
+            logger.warning("Start performing federated inferring ...") 
+
+            abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)
+            isOk, mes = abortSig.test()
+            while(not isOk):
+                dataBuf = bytearray()
+                # Waiting for the request from the host to return the direction
+                reqStat = comm.irecv(dataBuf, source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
+                isRx, mes = reqStat.test()
+                if(isRx):
+                    print("Rank", dataBuf)
+                    # Check incoming request
+                    if(dataBuf[1] == rank):
+                        #print(dirReqData.nodeFedId, dirReqData.receiverId, rank)
+
+                        # Reply
+                        rep = FedDirResponseInfo(userId)
+                        rep.Direction = Direction.LEFT
+                        status = comm.send(rep, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RESPONSE_DIRECTION)
+                    logger.warning("Reply the direction!") 
+                
+                
+                # Listen to the abort signal
+                abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)
+                isOk, mes = abortSig.test()
+                print("DCM", isRx, isOk, rank)
+            logger.warning("Finished federated inference!") 
 
 
     def classify(self, tree, data):
