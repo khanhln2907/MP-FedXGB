@@ -52,9 +52,10 @@ class FLTreeNode(TreeNode):
         if (self.FID) is id:
             return self
         for child in [self.leftBranch, self.rightBranch]:
-            ret = child.find_child_node(id)
-            if ret:
-                #print("Yay")
-                return ret
+            if child is not None:
+                ret = child.find_child_node(id)
+                if ret:
+                    #print("Yay")
+                    return ret
         return None
 

@@ -244,21 +244,44 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         Data matrix has the same format as the data appended to the database, includes the features' values
         
         """
-        #result = super().predict(data)
+        myRes = np.zeros(database.nUsers, dtype=float)
 
         # Perform prediction for users with [idUser] --> [left, right, nextParty]
-        
+        if rank is PARTY_ID.ACTIVE_PARTY:
+            # Initialize the inferrence process --> Mimic the clien service behaviour. TODO: use mpi4py standard?
+            nprocs = comm.Get_size()
+            for partners in range(2, nprocs):
+                data = comm.send(np.zeros([0]), dest = partners, tag = MSG_ID.INIT_INFERENCE_SIG)
+            logger.info("Sent the initial inference request to all partner party.")
 
-        myRes = np.zeros(database.nUsers, dtype=float)
-        if rank != 0:
+            # Synchronous federated Inference
             for i in range(database.nUsers):
                 myRes[i] = self.classify_fed(i, database)
+
+            # Finish inference --> sending abort signal
+            for partners in range(2, nprocs):
+                status = comm.send(np.zeros([0]), dest = partners, tag = MSG_ID.ABORT_INFERENCE_SIG)
+            logger.info("Sent the abort inference request to all partner party.")
+            
+        elif rank != 0:
+            # Receive sync request from the active party
+            info = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.INIT_INFERENCE_SIG)
+            logger.warning("Received the inital inference request from the active party. Start performing federated inferring ...") 
+
+            # Synchronous federated Inference
+            abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)            
+            isInferring, mes = abortSig.test()
+            # Synchronous modes as performing the federated inference
+            while(not isInferring):
+                for i in range(database.nUsers):
+                    myRes[i] = self.classify_fed(i, database)        
+                
+                isInferring, mes = abortSig.test()
+            
+            # Synchronous federated Inference
+            logger.warning("Finished federated inference!") 
         
         myRes = np.array(myRes).reshape(-1,1)
-    
-        if rank == 1:
-            #print(np.sum(myRes - result))
-            pass
         return myRes
     
     # TODO: bring the userIdList and data, fName to preprocessing --> classifying will predict a DataBase
@@ -283,13 +306,8 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         """
         Federated Infering
         """
+        
         if rank is PARTY_ID.ACTIVE_PARTY:
-            # Initialize the inferrence process --> Mimic the clien service behaviour. TODO: use mpi4py standard?
-            nprocs = comm.Get_size()
-            for partners in range(2, nprocs):
-                    data = comm.send(0, dest = partners, tag = MSG_ID.INIT_INFERENCE_SIG)
-                    logger.info("Sent the initial inference request to all partner party.")
-
             # Initialize searching from the root
             curNode = self.root
             # Iterate until we find the right leaf node  
@@ -298,7 +316,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 req = FedDirRequestInfo(userId)
                 req.nodeFedId = curNode.FID
                 
-                logger.warning("Sent the direction request to all partner party")
+                logger.debug("Sent the direction request to all partner party")
                 status = comm.send(req, dest = curNode.owner, tag = MSG_ID.REQUEST_DIRECTION)
                 
                 # Receive the response
@@ -312,61 +330,40 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 elif(dirResp.Direction == Direction.RIGHT):
                     curNode = curNode.rightBranch
 
-                #print("Check Leaf", curNode.is_leaf())
-
-            # Finish inference --> sending abort signal
-            for partners in range(2, nprocs):
-                status = comm.send(np.zeros([0]), dest = partners, tag = MSG_ID.ABORT_INFERENCE_SIG)
-            logger.info("Sent the abort inference request to all partner party.")
-            
             # Return the weight of the terminated tree leaf
             return curNode.weight
 
-
         elif rank != 0:
-            info = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.INIT_INFERENCE_SIG)
-            logger.warning("Received the inital inference request from the active party. Start performing federated inferring ...") 
-
-            abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)            
-            isInferring, mes = abortSig.test()
-            # Synchronous modes as performing the federated inference
-            while(not isInferring):
-                #dataBuf = bytearray()
-                # Waiting for the request from the host to return the direction
-                isRxRequest = comm.iprobe(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
-                if(isRxRequest):
-                    logger.debug("Received the direction inference request. Start Classifying ...") 
-                    rxReqData = comm.recv(source = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
-                    userClassified = rxReqData.userIdList
-                    rxReqData.log()
-                    fedNodePtr = self.root.find_child_node(rxReqData.nodeFedId)
-                    # Find the node and verify that it exists 
-                    if fedNodePtr:
-                        #fedNodePtr.splittingInfo.log()
-                        #print(userClassified)
-                        pass
-                    # Classify the user according to the current node
-                    rep = FedDirResponseInfo(userClassified)
-                    # Reply the direction 
-                    rep.Direction = \
-                        (database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId] > fedNodePtr.splittingInfo.splitValue)
-                    logger.info("User: %d, Val: %f, Thres: %f, Dir: %d", userClassified, \
-                        database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId], fedNodePtr.splittingInfo.splitValue, rep.Direction)                    
-                    #print(rep.Direction)
-                    #rep.Direction = Direction.DEFAULT
-                    assert rep.Direction != Direction.DEFAULT, "Invalid classification"
-
-                    # Transfer back to the active party
-                    status = comm.send(rep, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RESPONSE_DIRECTION)
-                    logger.debug("Received the request. Classify users in direction %s. Sent to active party.", str(rep.Direction)) 
-                else:
-                    #logger.info("Pending...")
+            # Waiting for the request from the host to return the direction
+            isRxRequest = comm.iprobe(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
+            if(isRxRequest):
+                logger.debug("Received the direction inference request. Start Classifying ...") 
+                rxReqData = comm.recv(source = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
+                userClassified = rxReqData.userIdList
+                rxReqData.log()
+                fedNodePtr = self.root.find_child_node(rxReqData.nodeFedId)
+                # Find the node and verify that it exists 
+                if fedNodePtr:
+                    #fedNodePtr.splittingInfo.log()
+                    #print(userClassified)
                     pass
-                
-                # Listen to the abort signal
-                isInferring, mes = abortSig.test()
-            logger.warning("Finished federated inference!") 
+                # Classify the user according to the current node
+                rep = FedDirResponseInfo(userClassified)
+                # Reply the direction 
+                rep.Direction = \
+                    (database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId] > fedNodePtr.splittingInfo.splitValue)
+                logger.info("User: %d, Val: %f, Thres: %f, Dir: %d", userClassified, \
+                    database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId], fedNodePtr.splittingInfo.splitValue, rep.Direction)                    
+                #print(rep.Direction)
+                #rep.Direction = Direction.DEFAULT
+                assert rep.Direction != Direction.DEFAULT, "Invalid classification"
 
+                # Transfer back to the active party
+                status = comm.send(rep, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RESPONSE_DIRECTION)
+                logger.debug("Received the request. Classify users in direction %s. Sent to active party.", str(rep.Direction)) 
+            else:
+                #logger.info("Pending...")
+                pass
             return 0
 
     def classify(self, tree, data):
