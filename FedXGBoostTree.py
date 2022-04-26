@@ -263,6 +263,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
     
     # TODO: bring the userIdList and data, fName to preprocessing --> classifying will predict a DataBase
     def classify_fed(self, userId, database: DataBase):
+        #print("Its me?")
         """
         This method performs the secured federated inferrence
         """
@@ -287,8 +288,8 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             # Initialize the inferrence process --> Mimic the clien service behaviour. TODO: use mpi4py standard?
             nprocs = comm.Get_size()
             for partners in range(2, nprocs):
-                    data = comm.send(0, dest = partners, tag = MSG_ID.INIT_INFERENCE_SIG)
-                    logger.info("Sent the initial inference request to all partner party.")
+                data = comm.send(0, dest = partners, tag = MSG_ID.INIT_INFERENCE_SIG)
+                logger.debug("Sent the initial inference request to all partner party.")
 
             # Initialize searching from the root
             curNode = self.root
@@ -298,7 +299,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 req = FedDirRequestInfo(userId)
                 req.nodeFedId = curNode.FID
                 
-                logger.warning("Sent the direction request to all partner party")
+                logger.debug("Sent the direction request to all partner party")
                 status = comm.send(req, dest = curNode.owner, tag = MSG_ID.REQUEST_DIRECTION)
                 
                 # Receive the response
@@ -306,7 +307,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 dirResp = comm.recv(source = curNode.owner, tag = MSG_ID.RESPONSE_DIRECTION)
 
                 logger.debug("Received the classification info from party %d", curNode.owner)
-                logger.info("User ID: %d| Direction: %s", (userId), str(dirResp.Direction))
+                logger.debug("User ID: %d| Direction: %s", (userId), str(dirResp.Direction))
                 if(dirResp.Direction == Direction.LEFT):
                     curNode =curNode.leftBranch
                 elif(dirResp.Direction == Direction.RIGHT):
@@ -317,7 +318,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             # Finish inference --> sending abort signal
             for partners in range(2, nprocs):
                 status = comm.send(np.zeros([0]), dest = partners, tag = MSG_ID.ABORT_INFERENCE_SIG)
-            logger.info("Sent the abort inference request to all partner party.")
+            logger.debug("Sent the abort inference request to all partner party.")
             
             # Return the weight of the terminated tree leaf
             return curNode.weight
@@ -325,7 +326,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         elif rank != 0:
             info = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.INIT_INFERENCE_SIG)
-            logger.warning("Received the inital inference request from the active party. Start performing federated inferring ...") 
+            logger.debug("Received the inital inference request from the active party. Start performing federated inferring ...") 
 
             abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)            
             isInferring, mes = abortSig.test()
@@ -350,7 +351,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                     # Reply the direction 
                     rep.Direction = \
                         (database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId] > fedNodePtr.splittingInfo.splitValue)
-                    logger.info("User: %d, Val: %f, Thres: %f, Dir: %d", userClassified, \
+                    logger.debug("User: %d, Val: %f, Thres: %f, Dir: %d", userClassified, \
                         database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId], fedNodePtr.splittingInfo.splitValue, rep.Direction)                    
                     #print(rep.Direction)
                     #rep.Direction = Direction.DEFAULT
@@ -365,7 +366,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 
                 # Listen to the abort signal
                 isInferring, mes = abortSig.test()
-            logger.warning("Finished federated inference!") 
+            logger.debug("Finished federated inference!") 
 
             return 0
 
