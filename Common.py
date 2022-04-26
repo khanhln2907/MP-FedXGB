@@ -90,7 +90,8 @@ class SplittingInfo:
 
 class FedQueryInfo:
     def __init__(self, userIdList = None) -> None:
-        self.nUsers = len(userIdList)
+        #self.nUsers = len(userIdList)
+        self.nUsers = 1
         self.userIdList = userIdList
 
 class FedDirRequestInfo(FedQueryInfo):

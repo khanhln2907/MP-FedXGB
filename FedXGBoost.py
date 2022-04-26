@@ -63,7 +63,8 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
 
     def print_info(self):
         featureListStr = '' 
-        self.dataBase.print_info()
+        ret = self.dataBase.log()
+        print(ret)
 
     def boostDepr(self):
         data_num = self.data.shape[0]
@@ -118,7 +119,8 @@ class FedXGBoostClassifier(VerticalXGBoostClassifier):
                 continue
             else:
                 #print("hello")
-                update_pred = self.trees[i].predict_fed(orgData)
+                fName = self.dataBase.get_feature_name()
+                update_pred = self.trees[i].predict(orgData, fName)
             if self.rank == 1:
                 update_pred = np.reshape(update_pred, (data_num, 1))
                 y_pred += update_pred

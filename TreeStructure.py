@@ -54,7 +54,7 @@ class FLTreeNode(TreeNode):
         for child in [self.leftBranch, self.rightBranch]:
             ret = child.find_child_node(id)
             if ret:
-                print("Yay")
+                #print("Yay")
                 return ret
         return None
 

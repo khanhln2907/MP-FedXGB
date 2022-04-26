@@ -108,14 +108,21 @@ class DataBase:
         """
         del self.featureDict[key]
 
-    def print_info(self):
+    def log(self):
         fNameList = ''
         for fName, fData in self.featureDict.items():
             fNameList += fName + '; '
         #print("Existing Feature: ", fNameList)
         #print(self.get_data_matrix())
+        logger.info("Database Info: %s", fNameList)
+        return fNameList
 
-    
+    def get_feature_name(self):
+        ret = []
+        for fName, fData in self.featureDict.items():
+            ret.append(fName)
+        return ret
+
     def get_data_matrix(self, nameFeature = None):
         X = pd.DataFrame(self.featureDict).values
         return X

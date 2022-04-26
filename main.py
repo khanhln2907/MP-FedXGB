@@ -63,13 +63,13 @@ def test():
     # b.display()
 
     if rank == 1:
-        y_pred = model.predict(X_test_A)
+        y_pred = model.predict(X_test_A, fNameA)
     elif rank == 2:
-        y_pred = model.predict(X_test_B)
+        y_pred = model.predict(X_test_B, fNameB)
     elif rank == 3:
-        y_pred = model.predict(X_test_C)
+        y_pred = model.predict(X_test_C, fNameC)
     elif rank == 4:
-        y_pred = model.predict(X_test_D)
+        y_pred = model.predict(X_test_D, fNameD)
     else:
         model.predict(np.zeros_like(X_test_A))
 
@@ -215,9 +215,9 @@ def main4():
 
 
 try:
+    logger.setLevel(logging.DEBUG)
     test()
     
-    logger.setLevel(logging.INFO)
     #main4()
 
     

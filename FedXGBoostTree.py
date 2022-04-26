@@ -236,10 +236,10 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         # Post processing
         # Remove the feature for the next iteration because this is already used
         if(rank == sInfo.bestSplitParty):
-            qDataBase.remove_feature(feature) # TODO: Implement a generic method to update the database before going into the next depth
-              
+            #qDataBase.remove_feature(feature) # TODO: Implement a generic method to update the database before going into the next depth
+            pass
 
-    def predict_fed(self, data, fName): # Encapsulated for many data
+    def predict_fed(self, database: DataBase): # Encapsulated for many data
         """
         Data matrix has the same format as the data appended to the database, includes the features' values
         
@@ -247,47 +247,37 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         #result = super().predict(data)
 
         # Perform prediction for users with [idUser] --> [left, right, nextParty]
-        data_num = data.shape[0]
-        result = []
-        for i in range(data_num):
-            temp_result = self.classify(self.Tree, data[i].reshape(1, -1))
-            if self.rank == 1:
-                result.append(temp_result)
-            else:
-                pass
-        result = np.array(result).reshape((-1, 1))
-
-        ## Khanh goes from here
-
-        self.classify_fed(np.array(range(len(data))), data)
-
-        if rank != 0:
-            nUsers = data.shape[0]
-            for i in range(nUsers):
-                #self.classify_fed(i, data[i])
         
-                pass
 
-        #print(result)
-        return result
+        myRes = np.zeros(database.nUsers, dtype=float)
+        if rank != 0:
+            for i in range(database.nUsers):
+                myRes[i] = self.classify_fed(i, database)
+        
+        myRes = np.array(myRes).reshape(-1,1)
+    
+        if rank == 1:
+            #print(np.sum(myRes - result))
+            pass
+        return myRes
     
     # TODO: bring the userIdList and data, fName to preprocessing --> classifying will predict a DataBase
-    def classify_fed(self, userIdList, data, fName = None):
+    def classify_fed(self, userId, database: DataBase):
         """
         This method performs the secured federated inferrence
         """
         # Convert into a database to be more standard
-        logger.info("Classifying %s users in the list %s.", str(len(userIdList)), str(userIdList))
-        logger.info("Private Data: %s", str(data.T))
+        #logger.info("Classifying %s users in the list %s.", str(len(userIdList)), str(userIdList))
+        #logger.info("Private Data: %s", str(data.T))
 
-        dataTable = data.copy()
-        nFeatures = len(dataTable[0])
-        if(fName is None):
-            fName = ["Rank_{}_Unknown_Feature_".format(rank) + str(i) for i in range(nFeatures)]
+        # dataTable = data.copy()
+        # nFeatures = len(dataTable[0])
+        # if(fName is None):
+        #     fName = ["Rank_{}_Unknown_Feature_".format(rank) + str(i) for i in range(nFeatures)]
         
-        for i in range(len(fName)):
-            tmpDataBase = DataBase()
-            tmpDataBase.append_feature(FeatureData(fName[i], dataTable[:,i]))
+        # for i in range(len(fName)):
+        #     tmpDataBase = DataBase()
+        #     tmpDataBase.append_feature(FeatureData(fName[i], dataTable[:,i]))
 
 
         """
@@ -300,35 +290,37 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                     data = comm.send(0, dest = partners, tag = MSG_ID.INIT_INFERENCE_SIG)
                     logger.info("Sent the initial inference request to all partner party.")
 
-
+            # Initialize searching from the root
             curNode = self.root
             # Iterate until we find the right leaf node  
             while(not curNode.is_leaf()):                
                 # Federate finding the direction for the next node
-                req = FedDirRequestInfo(userIdList)
+                req = FedDirRequestInfo(userId)
                 req.nodeFedId = curNode.FID
-                req.userIdList = np.array(range(curNode.nUsers)) # TODO: ...
-
+                
                 logger.warning("Sent the direction request to all partner party")
                 status = comm.send(req, dest = curNode.owner, tag = MSG_ID.REQUEST_DIRECTION)
                 
                 # Receive the response
-                logger.info("Waiting for the direction response from party %d.", curNode.owner)
+                logger.debug("Waiting for the direction response from party %d.", curNode.owner)
                 dirResp = comm.recv(source = curNode.owner, tag = MSG_ID.RESPONSE_DIRECTION)
 
-                logger.info("Received the classification info from party %d", curNode.owner)
-                logger.debug("Direction: %s", str(dirResp.Direction))
+                logger.debug("Received the classification info from party %d", curNode.owner)
+                logger.info("User ID: %d| Direction: %s", (userId), str(dirResp.Direction))
                 if(dirResp.Direction == Direction.LEFT):
                     curNode =curNode.leftBranch
                 elif(dirResp.Direction == Direction.RIGHT):
                     curNode = curNode.rightBranch
 
-                print("Check Leaf", curNode.is_leaf())
+                #print("Check Leaf", curNode.is_leaf())
 
             # Finish inference --> sending abort signal
             for partners in range(2, nprocs):
                 status = comm.send(np.zeros([0]), dest = partners, tag = MSG_ID.ABORT_INFERENCE_SIG)
             logger.info("Sent the abort inference request to all partner party.")
+            
+            # Return the weight of the terminated tree leaf
+            return curNode.weight
 
 
         elif rank != 0:
@@ -343,65 +335,64 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 # Waiting for the request from the host to return the direction
                 isRxRequest = comm.iprobe(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
                 if(isRxRequest):
-                    logger.warning("Received the direction inference request. Start Classifying ...") 
+                    logger.debug("Received the direction inference request. Start Classifying ...") 
                     rxReqData = comm.recv(source = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
-                    classifyingIUsers = rxReqData.userIdList
+                    userClassified = rxReqData.userIdList
                     rxReqData.log()
                     fedNodePtr = self.root.find_child_node(rxReqData.nodeFedId)
                     # Find the node and verify that it exists 
                     if fedNodePtr:
-                        logger.info("Node found")
-                        fedNodePtr.splittingInfo.log()
-                        print(classifyingIUsers)
-                        ret = tmpDataBase.get_direction(fedNodePtr.splittingInfo, classifyingIUsers)
-                        print(ret)
-
+                        #fedNodePtr.splittingInfo.log()
+                        #print(userClassified)
+                        pass
                     # Classify the user according to the current node
-                    rep = FedDirResponseInfo(userIdList)
+                    rep = FedDirResponseInfo(userClassified)
                     # Reply the direction 
-                    rep.Direction = Direction.LEFT
-                    
+                    rep.Direction = \
+                        (database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId] > fedNodePtr.splittingInfo.splitValue)
+                    logger.info("User: %d, Val: %f, Thres: %f, Dir: %d", userClassified, \
+                        database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId], fedNodePtr.splittingInfo.splitValue, rep.Direction)                    
+                    #print(rep.Direction)
+                    #rep.Direction = Direction.DEFAULT
+                    assert rep.Direction != Direction.DEFAULT, "Invalid classification"
 
                     # Transfer back to the active party
                     status = comm.send(rep, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RESPONSE_DIRECTION)
-                    logger.warning("Received the request. Classify users in direction %s. Sent to active party.", str(rep.Direction)) 
+                    logger.debug("Received the request. Classify users in direction %s. Sent to active party.", str(rep.Direction)) 
                 else:
-                    logger.info("Pending...")
+                    #logger.info("Pending...")
+                    pass
                 
                 # Listen to the abort signal
                 isInferring, mes = abortSig.test()
             logger.warning("Finished federated inference!") 
 
+            return 0
 
     def classify(self, tree, data):
-        #print(data.shape)
-
-        idx_list = []
-        shared_idx = None
-        final_result = 0
-        if self.rank != 0:
-            idx, result = self.getInfo(tree, data)
-        
-
-        # for i in range(1, clientNum + 1):
-        #     if self.rank == i:
-        #         shared_idx = self.split.SSSplit(idx, clientNum)
-        #         temp = np.zeros_like(shared_idx[0])
-        #         temp = np.expand_dims(temp, axis=0)
-        #         shared_idx = np.concatenate([temp, shared_idx], axis=0)
-        #     shared_idx = comm.scatter(shared_idx, root=i)
-        #     idx_list.append(shared_idx)
-
-        # final_idx = idx_list[0]
-        # for i in range(1, clientNum):
-        #     final_idx = self.split.SMUL(final_idx, idx_list[i], self.rank)
-        # if self.rank == 0:
-        #     result = np.zeros_like(final_idx)
-        # temp_result = np.sum(self.split.SMUL(final_idx, result, self.rank))
-        # temp_result = comm.gather(temp_result, root=1)
-        # if self.rank == 1:
-        #     final_result = np.sum(temp_result[1:])
         return super().classify(tree, data)
+
+    # def predict(self, data):
+    #     # super().predict(data)
+    #     return self.predict_fed(data)
+
+    def predict(self, dataTable, featureName = None):
+
+        nFeatures = len(dataTable[0])
+        if(featureName is None):
+            featureName = ["Rank_{}_Feature_".format(rank) + str(i) for i in range(nFeatures)]
+        
+        assert (len(featureName) is nFeatures) # The total amount of columns must match the assigned name 
+        
+        dataBase = DataBase()
+        for i in range(len(featureName)):
+            dataBase.append_feature(FeatureData(featureName[i], dataTable[:,i]))
+
+        
+        print(rank, featureName)
+
+        return self.predict_fed(dataBase)
+        return super().predict(dataTable)
 
 
 
