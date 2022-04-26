@@ -252,16 +252,16 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             nprocs = comm.Get_size()
             for partners in range(2, nprocs):
                 data = comm.send(np.zeros([0]), dest = partners, tag = MSG_ID.INIT_INFERENCE_SIG)
-            logger.info("Sent the initial inference request to all partner party.")
+            logger.debug("Sent the initial inference request to all partner party.")
 
             # Synchronous federated Inference
             for i in range(database.nUsers):
-                myRes[i] = self.classify_fed(i, database)
+                myRes[i] = self.classify_fed(database, userId = i)
 
             # Finish inference --> sending abort signal
             for partners in range(2, nprocs):
                 status = comm.send(np.zeros([0]), dest = partners, tag = MSG_ID.ABORT_INFERENCE_SIG)
-            logger.info("Sent the abort inference request to all partner party.")
+            logger.debug("Sent the abort inference request to all partner party.")
             
         elif rank != 0:
             # Receive sync request from the active party
@@ -270,43 +270,23 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
             # Synchronous federated Inference
             abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)            
-            isInferring, mes = abortSig.test()
+            isAbort, mes = abortSig.test()
             # Synchronous modes as performing the federated inference
-            while(not isInferring):
-                for i in range(database.nUsers):
-                    myRes[i] = self.classify_fed(i, database)        
-                
-                isInferring, mes = abortSig.test()
+            while(not isAbort):
+                self.classify_fed(database)        
+                isAbort, mes = abortSig.test()
             
             # Synchronous federated Inference
-            logger.warning("Finished federated inference!") 
+            logger.debug("Finished federated inference!") 
         
         myRes = np.array(myRes).reshape(-1,1)
         return myRes
     
     # TODO: bring the userIdList and data, fName to preprocessing --> classifying will predict a DataBase
-    def classify_fed(self, userId, database: DataBase):
-        """
-        This method performs the secured federated inferrence
-        """
-        # Convert into a database to be more standard
-        #logger.info("Classifying %s users in the list %s.", str(len(userIdList)), str(userIdList))
-        #logger.info("Private Data: %s", str(data.T))
-
-        # dataTable = data.copy()
-        # nFeatures = len(dataTable[0])
-        # if(fName is None):
-        #     fName = ["Rank_{}_Unknown_Feature_".format(rank) + str(i) for i in range(nFeatures)]
-        
-        # for i in range(len(fName)):
-        #     tmpDataBase = DataBase()
-        #     tmpDataBase.append_feature(FeatureData(fName[i], dataTable[:,i]))
-
-
+    def classify_fed(self, database: DataBase, userId = None):
         """
         Federated Infering
-        """
-        
+        """    
         if rank is PARTY_ID.ACTIVE_PARTY:
             # Initialize searching from the root
             curNode = self.root
@@ -351,9 +331,9 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 rep = FedDirResponseInfo(userClassified)
                 # Reply the direction 
                 rep.Direction = \
-                    (database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId] > fedNodePtr.splittingInfo.splitValue)
-                logger.info("User: %d, Val: %f, Thres: %f, Dir: %d", userClassified, \
-                    database.featureDict[fedNodePtr.splittingInfo.featureName].data[userId], fedNodePtr.splittingInfo.splitValue, rep.Direction)                    
+                    (database.featureDict[fedNodePtr.splittingInfo.featureName].data[userClassified] > fedNodePtr.splittingInfo.splitValue)
+                logger.debug("User: %d, Val: %f, Thres: %f, Dir: %d", userClassified, \
+                    database.featureDict[fedNodePtr.splittingInfo.featureName].data[userClassified], fedNodePtr.splittingInfo.splitValue, rep.Direction)                    
                 #print(rep.Direction)
                 #rep.Direction = Direction.DEFAULT
                 assert rep.Direction != Direction.DEFAULT, "Invalid classification"
@@ -367,6 +347,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             return 0
 
     def classify(self, tree, data):
+        assert False, "TODO"
         return super().classify(tree, data)
 
     # def predict(self, data):
@@ -385,9 +366,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         for i in range(len(featureName)):
             dataBase.append_feature(FeatureData(featureName[i], dataTable[:,i]))
 
-        
-        print(rank, featureName)
-
+        #print(rank, featureName)
         return self.predict_fed(dataBase)
         return super().predict(dataTable)
 

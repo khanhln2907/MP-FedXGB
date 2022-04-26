@@ -100,7 +100,7 @@ class FedDirRequestInfo(FedQueryInfo):
         self.nodeFedId = None
 
     def log(self):
-        logger.info("Inference Request| NodeFedID %d| nUsers: %d| Users: %s|", self.nodeFedId, self.nUsers, self.userIdList)
+        logger.debug("Inference Request| NodeFedID %d| nUsers: %d| Users: %s|", self.nodeFedId, self.nUsers, self.userIdList)
 
 class Direction:
     DEFAULT = None
