@@ -1,3 +1,4 @@
+from locale import currency
 import numpy as np
 from Common import Direction, FedDirRequestInfo, FedDirResponseInfo, logger, rank, comm, PARTY_ID, MSG_ID, TreeNodeType, SplittingInfo
 from VerticalXGBoost import VerticalXGBoostTree
@@ -269,39 +270,8 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         #print(result)
         return result
-
+    
     def classify_fed(self, userId, data):
-        """
-        This method performs the secured federated inferrence
-        """
-
-        logger.info("Classifying data of user %d. Data: %s", userId, str(data))
-
-        if rank is PARTY_ID.ACTIVE_PARTY:
-            # Initialize the inferrence process --> Mimic the clien service behaviour. TODO: use mpi4py standard?
-            nprocs = comm.Get_size()
-            req = FedDirRequestInfo(userId)
-            for partners in range(2, nprocs):
-                    data = comm.send(req, dest = partners, tag = MSG_ID.REQUEST_DIRECTION)
-                    logger.info("Sent the initial inference request to all partner party.")
-
-            
-
-
-        elif rank != 0:
-            reqInfo = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
-            logger.warning("Received the inference request from the active party") 
-            logger.warning("Start performing federated inferring ...") 
-            # Parse the request
-            id = reqInfo.userId
-
-        for i in range(self.nNode):
-            curNode = self.root                
-
-            logger.warning("Finished federated inference!") 
-
-
-    def classify_fed_dpre(self, userId, data):
         """
         This method performs the secured federated inferrence
         """
@@ -327,17 +297,18 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 # Request the direction from the partner TODO: send to only the related partner?
 
                 tmp = np.ones([userId, req.receiverId, req.receiverId])
-                buffer = comm.sendrecv(sendobj=tmp, dest=curNode.owner, sendtag= MSG_ID.REQUEST_DIRECTION,
-                                        source=PARTY_ID.ACTIVE_PARTY, recvtag = MSG_ID.RESPONSE_DIRECTION)
+                # buffer = comm.sendrecv(sendobj=tmp, dest=curNode.owner, sendtag= MSG_ID.REQUEST_DIRECTION,
+                #                         source=PARTY_ID.ACTIVE_PARTY, recvtag = MSG_ID.RESPONSE_DIRECTION)
 
-                for partners in range(2, nprocs):
-                    status = comm.send(tmp, dest = partners, tag = MSG_ID.REQUEST_DIRECTION)
-                logger.info("Sent the direction request to all partner party")
+                logger.warning("Sent the direction request to all partner party")
+                status = comm.send(req, dest = curNode.owner, tag = MSG_ID.REQUEST_DIRECTION)
                 
                 # Receive the response
+                logger.info("Waiting for the direction response from party %d.", curNode.owner)
                 dirResp = comm.recv(source = curNode.owner, tag = MSG_ID.RESPONSE_DIRECTION)
-                logger.info("Received the direction response from party %d.", curNode.owner)
 
+                logger.info("Received the classification info from party %d", curNode.owner)
+                logger.debug("Direction: %s", str(dirResp.Direction))
                 if(dirResp.Direction == Direction.LEFT):
                     curNode =curNode.leftBranch
                 elif(dirResp.Direction == Direction.RIGHT):
@@ -353,33 +324,32 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         elif rank != 0:
             info = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.INIT_INFERENCE_SIG)
-            logger.warning("Received the inference request from the active party") 
-            logger.warning("Start performing federated inferring ...") 
+            logger.warning("Received the inference request from the active party. Start performing federated inferring ...") 
 
-            abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)
-            isOk, mes = abortSig.test()
-            while(not isOk):
-                dataBuf = bytearray()
+            abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)            
+            isInferring, mes = abortSig.test()
+            # Synchronous modes as performing the federated inference
+            while(not isInferring):
+                #dataBuf = bytearray()
                 # Waiting for the request from the host to return the direction
-                reqStat = comm.irecv(dataBuf, source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
-                isRx, mes = reqStat.test()
-                if(isRx):
-                    print("Rank", dataBuf)
-                    # Check incoming request
-                    if(dataBuf[1] == rank):
-                        #print(dirReqData.nodeFedId, dirReqData.receiverId, rank)
+                isRxRequest = comm.iprobe(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
+                if(isRxRequest):
+                    rxReqData = comm.recv(source = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
 
-                        # Reply
-                        rep = FedDirResponseInfo(userId)
-                        rep.Direction = Direction.LEFT
-                        status = comm.send(rep, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RESPONSE_DIRECTION)
-                    logger.warning("Reply the direction!") 
-                
+                    # Classify the user according to the current node
+                    rep = FedDirResponseInfo(userId)
+                    # Reply the direction 
+                    rep.Direction = Direction.LEFT
+
+
+                    # Transfer back to the active party
+                    status = comm.send(rep, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RESPONSE_DIRECTION)
+                    logger.warning("Received the request. Classify users in direction %s. Sent to active party.", str(rep.Direction)) 
+                else:
+                    logger.info("Pending...")
                 
                 # Listen to the abort signal
-                abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)
-                isOk, mes = abortSig.test()
-                print("DCM", isRx, isOk, rank)
+                isInferring, mes = abortSig.test()
             logger.warning("Finished federated inference!") 
 
 
