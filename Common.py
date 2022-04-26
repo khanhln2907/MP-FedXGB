@@ -15,7 +15,7 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lin
 formatter = logging.Formatter('%(levelname)s - [%(filename)s:%(lineno)s - %(funcName)s] %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 logger.warning("Hello World")
 
@@ -100,7 +100,7 @@ class FedDirRequestInfo(FedQueryInfo):
         self.nodeFedId = None
 
     def log(self):
-        logger.info("Inference Request| NodeFedID %d| nUsers: %d| Users: %s|", self.nodeFedId, self.nUsers, self.userIdList)
+        logger.debug("Inference Request| NodeFedID %d| nUsers: %d| Users: %s|", self.nodeFedId, self.nUsers, self.userIdList)
 
 class Direction:
     DEFAULT = None
