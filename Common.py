@@ -62,7 +62,7 @@ class SplittingInfo:
         self.featureName = None
         self.splitValue = 0.0
 
-    def log(self, logger):
+    def log(self):
         logger.info("Best Splitting Score: L = %.2f, Selected Party %s",\
                 self.bestSplitScore, str(self.bestSplitParty))
         logger.info("%s", self.get_str_split_info())
@@ -89,14 +89,17 @@ class SplittingInfo:
 
 
 class FedQueryInfo:
-    def __init__(self, userId = None) -> None:
-        self.userId = userId
+    def __init__(self, userIdList = None) -> None:
+        self.nUsers = len(userIdList)
+        self.userIdList = userIdList
 
 class FedDirRequestInfo(FedQueryInfo):
-    def __init__(self, userId) -> None:
-        super().__init__(userId)
+    def __init__(self, userIdList) -> None:
+        super().__init__(userIdList)
         self.nodeFedId = None
-        self.receiverId = None
+
+    def log(self):
+        logger.info("Inference Request| NodeFedID %d| nUsers: %d| Users: %s|", self.nodeFedId, self.nUsers, self.userIdList)
 
 class Direction:
     DEFAULT = None
@@ -104,9 +107,9 @@ class Direction:
     RIGHT = 1
 
 class FedDirResponseInfo(FedQueryInfo):
-    def __init__(self, userId) -> None:
-        super().__init__(userId)
-        self.Direction = Direction.DEFAULT
+    def __init__(self, userIdList) -> None:
+        super().__init__(userIdList)
+        self.Direction = [Direction.DEFAULT for i in range(self.nUsers)]
 
 
 

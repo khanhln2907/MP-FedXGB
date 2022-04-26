@@ -1,9 +1,10 @@
+from tokenize import String
 from matplotlib.pyplot import sca
 import numpy as np
 import pandas as pd
 from scipy import rand
 
-from Common import logger,rank
+from Common import Direction, SplittingInfo, logger,rank
 
 
 class QuantileParam:
@@ -119,6 +120,15 @@ class DataBase:
         X = pd.DataFrame(self.featureDict).values
         return X
 
+    def get_direction(self, sInfo: SplittingInfo, userList: list):
+        ret = [Direction.DEFAULT for i in range(self.nUsers)]
+        leftId = self.featureDict[sInfo.featureName].data[userList] <= sInfo.splitValue
+        rightId = self.featureDict[sInfo.featureName].data[userList] > sInfo.splitValue 
+        
+        ret[leftId] = Direction.LEFT
+        ret[rightId] = Direction.RIGHT
+        return ret
+
 class QuantiledDataBase(DataBase):
     def __init__(self, dataBase:DataBase = None) -> None:
         super().__init__()
@@ -188,6 +198,13 @@ class QuantiledDataBase(DataBase):
     def appendGradientsHessian(self, g, h):
         self.gradVec = g
         self.hessVec = h
+
+
+
+
+
+
+
 
 def testQuantile():
     vec = rand(100)

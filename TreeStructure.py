@@ -48,4 +48,13 @@ class FLTreeNode(TreeNode):
         self.owner = sInfo.bestSplitParty
         self.splittingInfo = sInfo
 
-        
+    def find_child_node(self, id):
+        if (self.FID) is id:
+            return self
+        for child in [self.leftBranch, self.rightBranch]:
+            ret = child.find_child_node(id)
+            if ret:
+                print("Yay")
+                return ret
+        return None
+

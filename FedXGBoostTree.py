@@ -199,7 +199,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         else:
             currentNode.set_splitting_info(sInfo)
         
-        sInfo.log(logger)
+        sInfo.log()
 
         # Get the optimal splitting candidates and partition them into two databases
         if(sInfo.bestSplittingVector is not None):      
@@ -239,7 +239,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             qDataBase.remove_feature(feature) # TODO: Implement a generic method to update the database before going into the next depth
               
 
-    def predict_fed(self, data): # Encapsulated for many data
+    def predict_fed(self, data, fName): # Encapsulated for many data
         """
         Data matrix has the same format as the data appended to the database, includes the features' values
         
@@ -259,7 +259,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         ## Khanh goes from here
 
-        self.classify_fed(0, data[0])
+        self.classify_fed(np.array(range(len(data))), data)
 
         if rank != 0:
             nUsers = data.shape[0]
@@ -271,13 +271,28 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
         #print(result)
         return result
     
-    def classify_fed(self, userId, data):
+    # TODO: bring the userIdList and data, fName to preprocessing --> classifying will predict a DataBase
+    def classify_fed(self, userIdList, data, fName = None):
         """
         This method performs the secured federated inferrence
         """
+        # Convert into a database to be more standard
+        logger.info("Classifying %s users in the list %s.", str(len(userIdList)), str(userIdList))
+        logger.info("Private Data: %s", str(data.T))
 
-        logger.info("Classifying data of user %d. Data: %s", userId, str(data))
+        dataTable = data.copy()
+        nFeatures = len(dataTable[0])
+        if(fName is None):
+            fName = ["Rank_{}_Unknown_Feature_".format(rank) + str(i) for i in range(nFeatures)]
+        
+        for i in range(len(fName)):
+            tmpDataBase = DataBase()
+            tmpDataBase.append_feature(FeatureData(fName[i], dataTable[:,i]))
 
+
+        """
+        Federated Infering
+        """
         if rank is PARTY_ID.ACTIVE_PARTY:
             # Initialize the inferrence process --> Mimic the clien service behaviour. TODO: use mpi4py standard?
             nprocs = comm.Get_size()
@@ -290,15 +305,9 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             # Iterate until we find the right leaf node  
             while(not curNode.is_leaf()):                
                 # Federate finding the direction for the next node
-                req = FedDirRequestInfo(userId)
+                req = FedDirRequestInfo(userIdList)
                 req.nodeFedId = curNode.FID
-                req.receiverId = curNode.owner
-
-                # Request the direction from the partner TODO: send to only the related partner?
-
-                tmp = np.ones([userId, req.receiverId, req.receiverId])
-                # buffer = comm.sendrecv(sendobj=tmp, dest=curNode.owner, sendtag= MSG_ID.REQUEST_DIRECTION,
-                #                         source=PARTY_ID.ACTIVE_PARTY, recvtag = MSG_ID.RESPONSE_DIRECTION)
+                req.userIdList = np.array(range(curNode.nUsers)) # TODO: ...
 
                 logger.warning("Sent the direction request to all partner party")
                 status = comm.send(req, dest = curNode.owner, tag = MSG_ID.REQUEST_DIRECTION)
@@ -324,7 +333,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         elif rank != 0:
             info = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.INIT_INFERENCE_SIG)
-            logger.warning("Received the inference request from the active party. Start performing federated inferring ...") 
+            logger.warning("Received the inital inference request from the active party. Start performing federated inferring ...") 
 
             abortSig = comm.irecv(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.ABORT_INFERENCE_SIG)            
             isInferring, mes = abortSig.test()
@@ -334,13 +343,24 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 # Waiting for the request from the host to return the direction
                 isRxRequest = comm.iprobe(source=PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
                 if(isRxRequest):
+                    logger.warning("Received the direction inference request. Start Classifying ...") 
                     rxReqData = comm.recv(source = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.REQUEST_DIRECTION)
+                    classifyingIUsers = rxReqData.userIdList
+                    rxReqData.log()
+                    fedNodePtr = self.root.find_child_node(rxReqData.nodeFedId)
+                    # Find the node and verify that it exists 
+                    if fedNodePtr:
+                        logger.info("Node found")
+                        fedNodePtr.splittingInfo.log()
+                        print(classifyingIUsers)
+                        ret = tmpDataBase.get_direction(fedNodePtr.splittingInfo, classifyingIUsers)
+                        print(ret)
 
                     # Classify the user according to the current node
-                    rep = FedDirResponseInfo(userId)
+                    rep = FedDirResponseInfo(userIdList)
                     # Reply the direction 
                     rep.Direction = Direction.LEFT
-
+                    
 
                     # Transfer back to the active party
                     status = comm.send(rep, dest = PARTY_ID.ACTIVE_PARTY, tag = MSG_ID.RESPONSE_DIRECTION)
