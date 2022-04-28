@@ -9,32 +9,16 @@ from VerticalXGBoost import LogLoss, LeastSquareLoss
 
 
 
-
 class FedXGBoostClassifier():
-    def __init__(self, rank, lossfunc, _lambda=1, _gamma=0.5, _epsilon=0.1, n_estimators=3, max_depth=3):
-        if lossfunc == 'LogLoss':
-            self.loss = LogLoss()
-        else:
-            self.loss = LeastSquareLoss()
-        self._lambda = _lambda
-        self._gamma = _gamma
-        self._epsilon = _epsilon
-        self.n_estimators = n_estimators  # Number of trees
-        self.max_depth = max_depth  # Maximum depth for tree
+    def __init__(self, nTree = 3):
+        self.nTree = 3
         self.trees = []
-        for _ in range(n_estimators):
-            tree = VerticalFedXGBoostTree(
-                                        lossfunc=self.loss,
-                                       _lambda=self._lambda,
-                                        _gamma=self._gamma,
-                                       _epsilon=self._epsilon,
-                                       _maxdepth=self.max_depth,
-                                       clientNum=clientNum)
+        for _ in range(nTree):
+            tree = VerticalFedXGBoostTree()
             self.trees.append(tree)
 
-        self.data = []
-        self.label = []
         self.dataBase = DataBase()
+        self.label = []
 
     def append_data(self, dataTable, fName = None):
         """
@@ -59,12 +43,12 @@ class FedXGBoostClassifier():
         y = self.label
         y_pred = np.zeros(np.shape(self.label))
         
-        for i in range(self.n_estimators):     
+        for i in range(self.nTree):     
             # Perform tree boosting
             dataFit = QuantiledDataBase(self.dataBase)
             self.trees[i].fit_fed(y, y_pred, i, dataFit)
 
-            if i == self.n_estimators - 1: # The last tree, no need for prediction update.
+            if i == self.nTree - 1: # The last tree, no need for prediction update.
                 continue
             else:
                 update_pred = self.trees[i].predict_fed(orgData)

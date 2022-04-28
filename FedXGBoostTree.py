@@ -6,6 +6,17 @@ from TreeStructure import *
 from DataBaseStructure import *
 from TreeRender import FLVisNode
 
+
+class XgboostLearningParam:
+    def __init__(self) -> None:
+        self.LOSS_FUNC = LogLoss()
+        self.LAMBDA = 1
+        self.GAMMA = 0.5
+        self.EPS = 0.1
+        self.N_TREES = 3
+        self.MAX_DEPTH = 3
+
+
 def compute_splitting_score(SM, GVec, HVec, lamb):
     G = sum(GVec)
     H = sum(HVec)
@@ -23,17 +34,8 @@ def compute_splitting_score(SM, GVec, HVec, lamb):
 
 
 class VerticalFedXGBoostTree():
-    def __init__(self, lossfunc, _lambda, _gamma, _epsilon, _maxdepth, clientNum):
-        #super().__init__(rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum)
-        self.featureList = []
-        self.featureIdxMapping = {}
-        self._maxdepth = _maxdepth
-        self.loss = lossfunc
-        self._lambda = _lambda / clientNum
-        self._gamma = _gamma
-        self._epsilon = _epsilon
-
-
+    def __init__(self, param:XgboostLearningParam = XgboostLearningParam()):
+        self.learningParam = param
         self.root = FLTreeNode()
         self.nNode = 0
 
@@ -47,8 +49,8 @@ class VerticalFedXGBoostTree():
         """
         # Compute the gradients and hessians
         if rank == PARTY_ID.ACTIVE_PARTY: # Calculate gradients on the node who have labels.
-            G = np.array(self.loss.gradient(y, yPred)).reshape(-1)
-            H = np.array(self.loss.hess(y, yPred)).reshape(-1)
+            G = np.array(self.learningParam.LOSS_FUNC.gradient(y, yPred)).reshape(-1)
+            H = np.array(self.learningParam.LOSS_FUNC.hess(y, yPred)).reshape(-1)
             logger.info("Computed Gradients and Hessians ")
             logger.debug("G {}".format(' '.join(map(str, G))))
             logger.debug("H {}".format(' '.join(map(str, H))))
@@ -72,12 +74,6 @@ class VerticalFedXGBoostTree():
             rootNode = FLTreeNode()
             self.grow(qDataBase, depth = 0, NodeDirection = TreeNodeType.ROOT, currentNode = rootNode)
             self.root = rootNode
-
-            #if((rank == 1)):
-            #treeInfo = self.root.get_string_recursive()
-            #logger.info("Tree Info:\n%s", treeInfo)
-            #print(treeInfo)
-            
             # Display the tree in the log file
             b = FLVisNode(self.root)
             b.display(treeID)
@@ -172,7 +168,7 @@ class VerticalFedXGBoostTree():
             sInfo.featureName = feature
             sInfo.splitValue = value
             currentNode.set_splitting_info(sInfo)
-        else:
+        elif rank != 0:
             currentNode.set_splitting_info(sInfo)
         
         sInfo.log()
