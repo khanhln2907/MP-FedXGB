@@ -4,7 +4,7 @@ from mpi4py import MPI
 from datetime import *
 import math
 import time
-from VerticalXGBoost import *
+#from VerticalXGBoost import *
 from Tree import *
 np.random.seed(10)
 clientNum = 4

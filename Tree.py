@@ -5,7 +5,7 @@ from datetime import *
 import math
 import time
 from SSCalculation import *
-from VerticalXGBoost import *
+#from VerticalXGBoost import *
 np.random.seed(10)
 clientNum = 4
 comm = MPI.COMM_WORLD

@@ -3,6 +3,7 @@ import pandas as pd
 from mpi4py import MPI
 from datetime import *
 from SSCalculation import *
+from SSCalculation import SSCalculate
 from Tree import VerticalXGBoostTree
 import math
 import time
@@ -132,13 +133,13 @@ class VerticalXGBoostClassifier:
                 update_pred = np.reshape(update_pred, (data_num, 1))
                 y_pred += update_pred
 
-    def predict(self, X, fName = None):
+    def predict(self, X):
         y_pred = None
         data_num = X.shape[0]
         # Make predictions
         for tree in self.trees:
             # Estimate gradient and update prediction
-            update_pred = tree.predict(X, fName)
+            update_pred = tree.predict(X)
             if y_pred is None:
                 y_pred = np.zeros_like(update_pred).reshape(data_num, -1)
             if self.rank == 1:
@@ -401,6 +402,6 @@ def main3():
 
 
 if __name__ == '__main__':
-    #main2()
+    main2()
     pass
 
