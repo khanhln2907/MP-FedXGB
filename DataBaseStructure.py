@@ -136,6 +136,20 @@ class DataBase:
         ret[rightId] = Direction.RIGHT
         return ret
 
+    @staticmethod
+    def data_matrix_to_database(dataTable: np.ndarray, featureName = None):
+        nFeatures = len(dataTable[0])
+        if(featureName is None):
+            featureName = ["Rank_{}_Feature_".format(rank) + str(i) for i in range(nFeatures)]
+        
+        assert (len(featureName) is nFeatures) # The total amount of columns must match the assigned name 
+        
+        dataBase = DataBase()
+        for i in range(len(featureName)):
+            dataBase.append_feature(FeatureData(featureName[i], dataTable[:,i]))
+        
+        return dataBase
+
 class QuantiledDataBase(DataBase):
     def __init__(self, dataBase:DataBase = None) -> None:
         super().__init__()

@@ -34,8 +34,7 @@ def test():
     X_test_B = X_test[:, 2].reshape(-1, 1)
     X_test_C = X_test[:, 1].reshape(-1, 1)
     X_test_D = X_test[:, 3].reshape(-1, 1)
-    splitclass = SSCalculate()
-    model = FedXGBoostClassifier(rank=rank, lossfunc='LogLoss', splitclass=splitclass)
+    model = FedXGBoostClassifier(rank=rank, lossfunc='LogLoss')
 
     if rank == 1:
         model.append_data(X_train_A, fNameA)
@@ -63,13 +62,13 @@ def test():
     # b.display()
 
     if rank == 1:
-        y_pred = model.predict(X_test_A, fNameA)
+        y_pred = model.predict_fed(X_test_A, fNameA)
     elif rank == 2:
-        y_pred = model.predict(X_test_B, fNameB)
+        y_pred = model.predict_fed(X_test_B, fNameB)
     elif rank == 3:
-        y_pred = model.predict(X_test_C, fNameC)
+        y_pred = model.predict_fed(X_test_C, fNameC)
     elif rank == 4:
-        y_pred = model.predict(X_test_D, fNameD)
+        y_pred = model.predict_fed(X_test_D, fNameD)
     else:
         model.predict(np.zeros_like(X_test_A))
 
@@ -160,8 +159,7 @@ def main4():
     X_test_C = X_test[:, 4:7]
     X_test_D = X_test[:, 7:]
 
-    splitclass = SSCalculate()
-    model = FedXGBoostClassifier(rank=rank, lossfunc='LogLoss', splitclass=splitclass, max_depth=3, n_estimators=3, _epsilon=0.1)
+    model = FedXGBoostClassifier(rank=rank, lossfunc='LogLoss', max_depth=3, n_estimators=3, _epsilon=0.1)
 
     start = datetime.now()
      # np.concatenate((X_train_A, y_train))
@@ -216,9 +214,9 @@ def main4():
 
 try:
     logger.setLevel(logging.INFO)
-    #test()
+    test()
     
-    main4()
+    #main4()
 
     
 

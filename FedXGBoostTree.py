@@ -1,7 +1,7 @@
 from locale import currency
 import numpy as np
 from Common import Direction, FedDirRequestInfo, FedDirResponseInfo, logger, rank, comm, PARTY_ID, MSG_ID, TreeNodeType, SplittingInfo
-from VerticalXGBoost import VerticalXGBoostTree
+from VerticalXGBoost import LeastSquareLoss, LogLoss, VerticalXGBoostTree
 from TreeStructure import *
 from DataBaseStructure import *
 from TreeRender import FLVisNode
@@ -22,57 +22,33 @@ def compute_splitting_score(SM, GVec, HVec, lamb):
 
 
 
-class VerticalFedXGBoostTree(VerticalXGBoostTree):
-    def __init__(self, rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum):
-        super().__init__(rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum)
+class VerticalFedXGBoostTree():
+    def __init__(self, lossfunc, _lambda, _gamma, _epsilon, _maxdepth, clientNum):
+        #super().__init__(rank, lossfunc, splitclass, _lambda, _gamma, _epsilon, _maxdepth, clientNum)
+        self.featureList = []
+        self.featureIdxMapping = {}
+        self._maxdepth = _maxdepth
+        self.loss = lossfunc
+        self._lambda = _lambda / clientNum
+        self._gamma = _gamma
+        self._epsilon = _epsilon
+
 
         self.root = FLTreeNode()
         self.nNode = 0
 
-    def fitDepr(self, y_and_pred, tree_num, xData, sQuantile):
-        super().fit(y_and_pred, tree_num)
-
-
-        # Compute the gradients
-        if self.rank == PARTY_ID.ACTIVE_PARTY: # Calculate gradients on the node who have labels.
-            y, y_pred = self._split(y_and_pred)
-            G = self.loss.gradient(y, y_pred)
-            H = self.loss.hess(y, y_pred)
-            logger.info("Computed Gradients and Hessians ")
-            logger.debug("G {}".format(' '.join(map(str, G))))
-            logger.debug("H {}".format(' '.join(map(str, H))))
-
-            gh = np.concatenate((G, H), axis=1)
-            nprocs = comm.Get_size()
-            for partners in range(2, nprocs):   
-                logger.info("Sending G, H to party %d", partners)         
-                data = comm.send(G, dest = partners, tag = MSG_ID.MASKED_GH)
-        
-        elif rank != 0: # TODO: change this hard coded number
-        #else:
-            data = comm.recv(source=PARTY_ID.ACTIVE_PARTY, tag=MSG_ID.MASKED_GH)
-            logger.info("Received G, H")         
-            
-            # Perform the secure Sharing of the splitting matrix
-            # for featureID in range(len(sQuantile[0])):
-            #     splitMat = FedXGBoostSecureHandler.generate_splitting_matrix(xData, sQuantile[0])
-            if rank == 2:
-                #print(xData)
-                pass
-
-    def fit(self, y_and_pred, treeID, qDataBase: QuantiledDataBase):
+    def fit_fed(self, y, yPred, treeID, qDataBase: QuantiledDataBase):
         logger.info("Tree is growing column-wise. Current column: %d", treeID)
 
-        super().fit(y_and_pred, treeID)
+        #super().fit(y_and_pred, treeID)
 
         """
         This function computes the gradient and the hessian vectors to perform the tree construction
         """
         # Compute the gradients and hessians
-        if self.rank == PARTY_ID.ACTIVE_PARTY: # Calculate gradients on the node who have labels.
-            y, y_pred = self._split(y_and_pred)
-            G = np.array(self.loss.gradient(y, y_pred)).reshape(-1)
-            H = np.array(self.loss.hess(y, y_pred)).reshape(-1)
+        if rank == PARTY_ID.ACTIVE_PARTY: # Calculate gradients on the node who have labels.
+            G = np.array(self.loss.gradient(y, yPred)).reshape(-1)
+            H = np.array(self.loss.hess(y, yPred)).reshape(-1)
             logger.info("Computed Gradients and Hessians ")
             logger.debug("G {}".format(' '.join(map(str, G))))
             logger.debug("H {}".format(' '.join(map(str, H))))
@@ -106,7 +82,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
             b = FLVisNode(self.root)
             b.display(treeID)
 
-    def generate_leaf(self, gVec, hVec, lamb = 0.01):
+    def generate_leaf(self, gVec, hVec, lamb = 0.1):
         gI = sum(gVec) 
         hI = sum(hVec)
         ret = TreeNode(-1.0 * gI / (hI + lamb), leftBranch= None, rightBranch= None)
@@ -122,7 +98,7 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
 
         # Start finding the optimal candidate federatedly
         # TODO: write a generic method because this part depends on the secure protocol        
-        if self.rank == PARTY_ID.ACTIVE_PARTY:
+        if rank == PARTY_ID.ACTIVE_PARTY:
             sInfo = SplittingInfo()
             nprocs = comm.Get_size()
             # Collect all private splitting info from the partners to find the optimal splitting candidates
@@ -346,30 +322,12 @@ class VerticalFedXGBoostTree(VerticalXGBoostTree):
                 pass
             return 0
 
-    def classify(self, tree, data):
-        assert False, "TODO"
-        return super().classify(tree, data)
+    
 
-    # def predict(self, data):
-    #     # super().predict(data)
-    #     return self.predict_fed(data)
-
-    def predict(self, dataTable, featureName = None):
-
-        nFeatures = len(dataTable[0])
-        if(featureName is None):
-            featureName = ["Rank_{}_Feature_".format(rank) + str(i) for i in range(nFeatures)]
-        
-        assert (len(featureName) is nFeatures) # The total amount of columns must match the assigned name 
-        
-        dataBase = DataBase()
-        for i in range(len(featureName)):
-            dataBase.append_feature(FeatureData(featureName[i], dataTable[:,i]))
-
-        #print(rank, featureName)
+    def predict(self, dataTable, featureName):        
+        dataBase = DataBase.data_matrix_to_database(dataTable, featureName)
         return self.predict_fed(dataBase)
-        return super().predict(dataTable)
-
+        
 
 
 
